@@ -1,9 +1,24 @@
-# Engineering Log
+## # Engineering Log
 
-## Day 1
+## Sprint 1
 
-- Created the first FastAPI backend.
+- Git initialized
 
-- Learned how APIs work.
+- Repository structure created
 
-- Successfully tested the first endpoint using Swagger UI.
+## Sprint 2
+
+- FastAPI installed
+
+- First API running
+
+## Sprint 3
+
+- Router architecture
+
+- Health endpoint
+
+## Sprint 4
+
+- Centralized configuration
+

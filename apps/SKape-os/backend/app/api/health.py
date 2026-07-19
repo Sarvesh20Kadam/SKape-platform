@@ -1,14 +1,17 @@
 from fastapi import APIRouter
 
+from app.core.config import settings
+
 router = APIRouter(
     prefix="/health",
     tags=["Health"]
 )
 
+
 @router.get("/")
 def health():
     return {
         "status": "healthy",
-        "service": "SKape OS",
-        "version": "0.1.0"
+        "service": settings.APP_NAME,
+        "version": settings.VERSION
     }
