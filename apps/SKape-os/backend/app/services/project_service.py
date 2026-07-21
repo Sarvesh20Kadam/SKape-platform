@@ -18,3 +18,11 @@ def create_project(project: ProjectCreate) -> ProjectResponse:
 
 def get_projects():
     return projects
+
+
+def get_project_by_id(project_id: int):
+    for project in projects:
+        if project.id == project_id:
+            return project
+
+    return None
