@@ -1,6 +1,11 @@
 from typing import List
 
 from fastapi import APIRouter, HTTPException
+from fastapi import Depends
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.crud.project import create_project as db_create_project
 
 from app.schemas.project import (
     ProjectCreate,
@@ -22,8 +27,11 @@ router = APIRouter(
 
 
 @router.post("/", response_model=ProjectResponse)
-def create(project: ProjectCreate):
-    return create_project(project)
+def create(
+    project: ProjectCreate,
+    db: Session = Depends(get_db)
+):
+    return db_create_project(db, project)
 
 
 @router.get("/", response_model=List[ProjectResponse])
