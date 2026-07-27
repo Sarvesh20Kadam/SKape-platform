@@ -1,9 +1,13 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = "postgresql://postgres:SKape2026@localhost:5432/skape"
+from app.env_config import DATABASE_URL
 
-engine = create_engine(DATABASE_URL)
+SQLALCHEMY_DATABASE_URL = DATABASE_URL
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL
+)
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -12,6 +16,8 @@ SessionLocal = sessionmaker(
 )
 
 Base = declarative_base()
+
+
 def get_db():
     db = SessionLocal()
     try:
