@@ -1,11 +1,11 @@
-from pydantic import BaseModel, EmailStr
 from typing import Optional
+
+from pydantic import BaseModel, EmailStr
 
 
 class OrganizationBase(BaseModel):
     name: str
-    slug: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
     phone: Optional[str] = None
     website: Optional[str] = None
     logo: Optional[str] = None
@@ -30,6 +30,7 @@ class OrganizationUpdate(BaseModel):
 
 class OrganizationResponse(OrganizationBase):
     id: int
+    slug: str
     is_active: bool
 
     class Config:

@@ -3,10 +3,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+
 from app.schemas.user import (
     UserCreate,
     UserResponse,
-    UserLogin,
     Token,
 )
 
@@ -40,12 +40,20 @@ def register(
             detail="Email already registered"
         )
 
-    return create_user(
-        db,
-        user
-    )
+    try:
+        return create_user(db, user)
 
-@router.post("/login", response_model=Token)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+
+@router.post(
+    "/login",
+    response_model=Token
+)
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
@@ -63,11 +71,11 @@ def login(
         )
 
     token = create_access_token(
-    {
-        "sub": authenticated_user.email,
-        "role": authenticated_user.role
-    }
-)
+        {
+            "sub": authenticated_user.email,
+            "role": authenticated_user.role
+        }
+    )
 
     return {
         "access_token": token,

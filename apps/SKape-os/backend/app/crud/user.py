@@ -1,20 +1,54 @@
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.models.organization import Organization
+
 from app.schemas.user import UserCreate
+
 from app.security import (
     hash_password,
     verify_password,
 )
 
 
+def generate_slug(name: str) -> str:
+    return (
+        name.strip()
+        .lower()
+        .replace(" ", "-")
+    )
+
+
 def create_user(db: Session, user: UserCreate):
+
+    slug = generate_slug(user.organization_name)
+
+    existing_org = (
+        db.query(Organization)
+        .filter(Organization.slug == slug)
+        .first()
+    )
+
+    if existing_org:
+        raise ValueError("Organization already exists")
+
+    organization = Organization(
+        name=user.organization_name,
+        slug=slug,
+        is_active=True
+    )
+
+    db.add(organization)
+    db.commit()
+    db.refresh(organization)
+
     db_user = User(
         name=user.name,
         email=user.email,
         hashed_password=hash_password(user.password),
-        role="employee",
+        role="owner",
         is_active=True,
+        organization_id=organization.id
     )
 
     db.add(db_user)
@@ -40,25 +74,15 @@ def authenticate_user(
     email: str,
     password: str
 ):
-    print("Login email:", email)
-
     user = get_user_by_email(db, email)
-
-    print("User found:", user)
 
     if not user:
         return None
 
-    print("Stored hash:", user.hashed_password)
-
-    result = verify_password(
+    if not verify_password(
         password,
         user.hashed_password
-    )
-
-    print("Password valid:", result)
-
-    if not result:
+    ):
         return None
 
     return user

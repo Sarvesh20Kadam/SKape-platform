@@ -1,13 +1,14 @@
 print("LOADED NEW PROJECTS.PY")
+
 from typing import List
 
-from fastapi import APIRouter, HTTPException
-from fastapi import Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
+from app.database import get_db
 from app.dependencies import get_current_user
 from app.permissions import require_role
 
-from app.database import get_db
 from app.crud.project import (
     create_project as db_create_project,
     get_projects as db_get_projects,
@@ -21,13 +22,6 @@ from app.schemas.project import (
     ProjectUpdate,
     ProjectResponse,
 )
-from app.services.project_service import (
-    create_project,
-    get_projects,
-    get_project_by_id,
-    update_project,
-    delete_project,
-)
 
 router = APIRouter(
     prefix="/projects",
@@ -39,25 +33,37 @@ router = APIRouter(
 def create(
     project: ProjectCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role("admin", "manager"))
+    current_user=Depends(require_role("owner", "admin", "manager"))
 ):
-    return db_create_project(db, project)
+    return db_create_project(
+        db,
+        project,
+        current_user.organization_id
+    )
 
 
 @router.get("/", response_model=List[ProjectResponse])
 def get_all_projects(
     db: Session = Depends(get_db),
-    current_user = Depends(require_role("admin", "manager", "employee"))
+    current_user=Depends(require_role("owner", "admin", "manager", "employee"))
 ):
-    return db_get_projects(db)
+    return db_get_projects(
+        db,
+        current_user.organization_id
+    )
+
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role("admin", "manager", "employee"))
+    current_user=Depends(require_role("owner", "admin", "manager", "employee"))
 ):
-    project = db_get_project_by_id(db, project_id)
+    project = db_get_project_by_id(
+        db,
+        project_id,
+        current_user.organization_id
+    )
 
     if project is None:
         raise HTTPException(
@@ -66,18 +72,19 @@ def get_project(
         )
 
     return project
-    
+
 
 @router.put("/{project_id}", response_model=ProjectResponse)
 def update(
     project_id: int,
     project: ProjectUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role("admin", "manager"))
+    current_user=Depends(require_role("owner", "admin", "manager"))
 ):
     updated = db_update_project(
         db,
         project_id,
+        current_user.organization_id,
         project
     )
 
@@ -88,15 +95,19 @@ def update(
         )
 
     return updated
-    
-    
+
+
 @router.delete("/{project_id}", response_model=ProjectResponse)
 def delete(
     project_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    deleted = db_delete_project(db, project_id)
+    deleted = db_delete_project(
+        db,
+        project_id,
+        current_user.organization_id
+    )
 
     if deleted is None:
         raise HTTPException(
