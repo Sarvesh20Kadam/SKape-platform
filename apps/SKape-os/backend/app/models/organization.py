@@ -1,4 +1,11 @@
-from sqlalchemy import Boolean, Column, Integer, String
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Integer,
+    String,
+)
+
+from sqlalchemy.orm import relationship
 
 from app.database import Base
 
@@ -10,18 +17,30 @@ class Organization(Base):
 
     name = Column(String, nullable=False)
 
-    slug = Column(String, unique=True, nullable=False)
+    slug = Column(String, unique=True, index=True, nullable=False)
 
-    email = Column(String, unique=True)
+    email = Column(String, unique=True, nullable=True)
 
-    phone = Column(String)
+    phone = Column(String, nullable=True)
 
-    website = Column(String)
+    website = Column(String, nullable=True)
 
-    logo = Column(String)
+    logo = Column(String, nullable=True)
 
-    industry = Column(String)
+    industry = Column(String, nullable=True)
 
-    address = Column(String)
+    address = Column(String, nullable=True)
 
     is_active = Column(Boolean, default=True)
+
+    users = relationship(
+        "User",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+
+    projects = relationship(
+        "Project",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )

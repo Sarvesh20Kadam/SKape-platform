@@ -1,4 +1,12 @@
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+)
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -16,6 +24,17 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
 
     role = Column(String, default="employee")
+
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id"),
+        nullable=False
+    )
+
+    organization = relationship(
+        "Organization",
+        back_populates="users"
+    )
 
     is_active = Column(Boolean, default=True)
 
