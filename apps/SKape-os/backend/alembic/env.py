@@ -23,6 +23,7 @@ if config.config_file_name is not None:
 from app.database import Base
 from app.models.project import Project
 from app.models.user import User
+from app.models.invitation import Invitation
 
 target_metadata = Base.metadata
 

@@ -94,3 +94,18 @@ def delete_organization(
     db.commit()
 
     return db_org
+
+from sqlalchemy.orm import Session
+
+from app.models.user import User
+
+
+def get_organization_members(
+    db: Session,
+    organization_id: int
+):
+    return (
+        db.query(User)
+        .filter(User.organization_id == organization_id)
+        .all()
+    )

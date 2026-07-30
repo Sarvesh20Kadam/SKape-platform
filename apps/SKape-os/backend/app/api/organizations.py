@@ -12,6 +12,7 @@ from app.crud.organization import (
     get_organization_by_id,
     update_organization,
     delete_organization,
+    get_organization_members,
 )
 
 from app.schemas.organization import (
@@ -19,6 +20,8 @@ from app.schemas.organization import (
     OrganizationUpdate,
     OrganizationResponse,
 )
+
+from app.schemas.user import UserResponse
 
 router = APIRouter(
     prefix="/organizations",
@@ -30,7 +33,7 @@ router = APIRouter(
 def create(
     organization: OrganizationCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("admin"))
+    current_user=Depends(require_role("owner"))
 ):
     return create_organization(db, organization)
 
@@ -38,18 +41,44 @@ def create(
 @router.get("/", response_model=List[OrganizationResponse])
 def get_all(
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("admin", "manager"))
+    current_user=Depends(require_role("owner", "admin", "manager"))
 ):
     return get_organizations(db)
+
+
+# IMPORTANT:
+# This route must be ABOVE "/{organization_id}"
+@router.get(
+    "/members",
+    response_model=List[UserResponse]
+)
+def get_members(
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee"
+        )
+    )
+):
+    return get_organization_members(
+        db,
+        current_user.organization_id
+    )
 
 
 @router.get("/{organization_id}", response_model=OrganizationResponse)
 def get_one(
     organization_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("admin", "manager"))
+    current_user=Depends(require_role("owner", "admin", "manager"))
 ):
-    organization = get_organization_by_id(db, organization_id)
+    organization = get_organization_by_id(
+        db,
+        organization_id
+    )
 
     if organization is None:
         raise HTTPException(
@@ -65,7 +94,7 @@ def update(
     organization_id: int,
     organization: OrganizationUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("admin"))
+    current_user=Depends(require_role("owner", "admin"))
 ):
     updated = update_organization(
         db,
@@ -86,7 +115,7 @@ def update(
 def delete(
     organization_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("admin"))
+    current_user=Depends(require_role("owner"))
 ):
     deleted = delete_organization(
         db,
