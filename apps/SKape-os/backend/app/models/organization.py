@@ -44,8 +44,9 @@ class Organization(Base):
         back_populates="organization",
         cascade="all, delete-orphan"
     )
-invitations = relationship(
-    "Invitation",
-    back_populates="organization",
-    cascade="all, delete-orphan"
-)
+
+    invitations = relationship(
+        "Invitation",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )

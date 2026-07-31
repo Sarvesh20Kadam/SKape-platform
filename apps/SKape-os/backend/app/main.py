@@ -7,6 +7,7 @@ from app.api.version import router as version_router
 from app.api.projects import router as projects_router
 from app.api import users
 from app.api.organizations import router as organizations_router
+from app.api.invitations import router as invitations_router
 
 
 app = FastAPI(
@@ -33,5 +34,9 @@ app.include_router(
 )
 app.include_router(
     organizations_router,
+    prefix="/api/v1"
+)
+app.include_router(
+    invitations_router,
     prefix="/api/v1"
 )
