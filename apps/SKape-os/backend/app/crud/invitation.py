@@ -45,3 +45,14 @@ def get_pending_invitation_by_email(
         )
         .first()
     )
+
+
+def get_invitation_by_token(
+    db: Session,
+    token: str
+):
+    return (
+        db.query(Invitation)
+        .filter(Invitation.token == token)
+        .first()
+    )

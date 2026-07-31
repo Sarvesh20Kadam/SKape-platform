@@ -19,3 +19,7 @@ class InvitationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class InvitationAccept(BaseModel):
+    token: str
