@@ -1,0 +1,142 @@
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.dependencies import get_current_user
+from app.permissions import require_role
+
+from app.crud.task import (
+    create_task as db_create_task,
+    get_tasks as db_get_tasks,
+    get_task_by_id as db_get_task_by_id,
+    update_task as db_update_task,
+    delete_task as db_delete_task,
+)
+
+from app.schemas.task import (
+    TaskCreate,
+    TaskUpdate,
+    TaskResponse,
+)
+
+router = APIRouter(
+    prefix="/tasks",
+    tags=["Tasks"]
+)
+
+
+@router.post("/", response_model=TaskResponse)
+def create(
+    task: TaskCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("owner", "admin", "manager"))
+):
+    return db_create_task(
+        db,
+        task,
+        current_user.organization_id
+    )
+
+
+@router.get("/", response_model=List[TaskResponse])
+def get_all(
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee"
+        )
+    )
+):
+    return db_get_tasks(
+        db,
+        current_user.organization_id
+    )
+
+
+@router.get("/{task_id}", response_model=TaskResponse)
+def get_one(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee"
+        )
+    )
+):
+    task = db_get_task_by_id(
+        db,
+        task_id,
+        current_user.organization_id
+    )
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    return task
+
+
+@router.put("/{task_id}", response_model=TaskResponse)
+def update(
+    task_id: int,
+    task: TaskUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager"
+        )
+    )
+):
+    updated = db_update_task(
+        db,
+        task_id,
+        current_user.organization_id,
+        task
+    )
+
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    return updated
+
+
+@router.delete("/{task_id}", response_model=TaskResponse)
+def delete(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager"
+        )
+    )
+):
+    deleted = db_delete_task(
+        db,
+        task_id,
+        current_user.organization_id
+    )
+
+    if deleted is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    return deleted

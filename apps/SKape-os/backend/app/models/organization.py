@@ -50,3 +50,9 @@ class Organization(Base):
         back_populates="organization",
         cascade="all, delete-orphan"
     )
+
+    tasks = relationship(
+    "Task",
+    back_populates="organization",
+    cascade="all, delete-orphan"
+)

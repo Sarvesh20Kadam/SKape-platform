@@ -24,6 +24,7 @@ from app.database import Base
 from app.models.project import Project
 from app.models.user import User
 from app.models.invitation import Invitation
+from app.models.task import Task
 
 target_metadata = Base.metadata
 
