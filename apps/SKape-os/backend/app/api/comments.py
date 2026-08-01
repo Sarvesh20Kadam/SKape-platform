@@ -1,0 +1,135 @@
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.permissions import require_role
+
+from app.crud.comment import (
+    create_comment,
+    get_comments,
+    update_comment,
+    delete_comment,
+)
+
+from app.schemas.comment import (
+    CommentCreate,
+    CommentUpdate,
+    CommentResponse,
+)
+
+router = APIRouter(
+    prefix="/comments",
+    tags=["Comments"]
+)
+
+
+@router.post(
+    "/",
+    response_model=CommentResponse
+)
+def create(
+    comment: CommentCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee"
+        )
+    )
+):
+    return create_comment(
+        db,
+        comment,
+        current_user.id,
+        current_user.organization_id
+    )
+
+
+@router.get(
+    "/{task_id}",
+    response_model=List[CommentResponse]
+)
+def get_all(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee"
+        )
+    )
+):
+    return get_comments(
+        db,
+        task_id,
+        current_user.organization_id
+    )
+
+
+@router.put(
+    "/{comment_id}",
+    response_model=CommentResponse
+)
+def update(
+    comment_id: int,
+    comment: CommentUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee"
+        )
+    )
+):
+    updated = update_comment(
+        db,
+        comment_id,
+        comment.content,
+        current_user.organization_id
+    )
+
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Comment not found"
+        )
+
+    return updated
+
+
+@router.delete(
+    "/{comment_id}",
+    response_model=CommentResponse
+)
+def delete(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager"
+        )
+    )
+):
+    deleted = delete_comment(
+        db,
+        comment_id,
+        current_user.organization_id
+    )
+
+    if deleted is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Comment not found"
+        )
+
+    return deleted

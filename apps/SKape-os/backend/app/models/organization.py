@@ -52,7 +52,13 @@ class Organization(Base):
     )
 
     tasks = relationship(
-    "Task",
-    back_populates="organization",
-    cascade="all, delete-orphan"
-)
+        "Task",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+
+    comments = relationship(
+        "Comment",
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )

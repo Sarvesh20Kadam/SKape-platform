@@ -36,6 +36,17 @@ class User(Base):
         back_populates="users"
     )
 
+    tasks = relationship(
+        "Task",
+        back_populates="assignee"
+    )
+
+    comments = relationship(
+        "Comment",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
     is_active = Column(Boolean, default=True)
 
     created_at = Column(
@@ -48,8 +59,3 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
-
-    tasks = relationship(
-    "Task",
-    back_populates="assignee"
-)
