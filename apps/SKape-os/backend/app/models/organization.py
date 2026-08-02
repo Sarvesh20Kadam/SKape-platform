@@ -62,3 +62,9 @@ class Organization(Base):
         back_populates="organization",
         cascade="all, delete-orphan"
     )
+
+    activities = relationship(
+    "Activity",
+    back_populates="organization",
+    cascade="all, delete-orphan"
+)

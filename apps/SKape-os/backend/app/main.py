@@ -11,6 +11,7 @@ from app.api.invitations import router as invitations_router
 from app.api.tasks import router as tasks_router
 from app.api.dashboard import router as dashboard_router
 from app.api.comments import router as comments_router
+from app.api.activity import router as activity_router
 
 
 app = FastAPI(
@@ -53,5 +54,9 @@ app.include_router(
 )
 app.include_router(
     comments_router,
+    prefix="/api/v1"
+)
+app.include_router(
+    activity_router,
     prefix="/api/v1"
 )

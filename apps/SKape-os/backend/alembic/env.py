@@ -26,6 +26,7 @@ from app.models.user import User
 from app.models.invitation import Invitation
 from app.models.task import Task
 from app.models.comment import Comment
+from app.models.activity import Activity
 
 target_metadata = Base.metadata
 

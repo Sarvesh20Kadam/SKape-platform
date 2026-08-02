@@ -59,3 +59,9 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
+
+    activities = relationship(
+    "Activity",
+    back_populates="user",
+    cascade="all, delete-orphan"
+)

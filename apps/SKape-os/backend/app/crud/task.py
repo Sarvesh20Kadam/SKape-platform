@@ -2,12 +2,14 @@ from sqlalchemy.orm import Session
 
 from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskUpdate
+from app.crud.activity import log_activity
 
 
 def create_task(
     db: Session,
     task: TaskCreate,
-    organization_id: int
+    organization_id: int,
+    user_id: int
 ):
     db_task = Task(
         title=task.title,
@@ -23,6 +25,15 @@ def create_task(
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+
+    log_activity(
+        db=db,
+        action="created",
+        entity="task",
+        entity_id=db_task.id,
+        user_id=user_id,
+        organization_id=organization_id
+    )
 
     return db_task
 

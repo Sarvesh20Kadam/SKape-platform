@@ -34,10 +34,11 @@ def create(
     current_user=Depends(require_role("owner", "admin", "manager"))
 ):
     return db_create_task(
-        db,
-        task,
-        current_user.organization_id
-    )
+    db,
+    task,
+    current_user.organization_id,
+    current_user.id
+)
 
 
 @router.get("/", response_model=List[TaskResponse])
