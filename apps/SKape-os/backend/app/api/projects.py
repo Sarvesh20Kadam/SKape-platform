@@ -36,10 +36,11 @@ def create(
     current_user=Depends(require_role("owner", "admin", "manager"))
 ):
     return db_create_project(
-        db,
-        project,
-        current_user.organization_id
-    )
+    db=db,
+    project=project,
+    organization_id=current_user.organization_id,
+    user_id=current_user.id,
+)
 
 
 @router.get("/", response_model=List[ProjectResponse])
@@ -82,11 +83,12 @@ def update(
     current_user=Depends(require_role("owner", "admin", "manager"))
 ):
     updated = db_update_project(
-        db,
-        project_id,
-        current_user.organization_id,
-        project
-    )
+    db=db,
+    project_id=project_id,
+    organization_id=current_user.organization_id,
+    user_id=current_user.id,
+    updated_project=project,
+)
 
     if updated is None:
         raise HTTPException(
@@ -101,12 +103,19 @@ def update(
 def delete(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager"
+        )
+    )
 ):
     deleted = db_delete_project(
-        db,
-        project_id,
-        current_user.organization_id
+        db=db,
+        project_id=project_id,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
     )
 
     if deleted is None:

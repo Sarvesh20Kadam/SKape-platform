@@ -100,11 +100,13 @@ def update(
         )
     )
 ):
+
     updated = db_update_task(
-        db,
-        task_id,
-        current_user.organization_id,
-        task
+        db=db,
+        task_id=task_id,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        updated_task=task,
     )
 
     if updated is None:
@@ -129,9 +131,10 @@ def delete(
     )
 ):
     deleted = db_delete_task(
-        db,
-        task_id,
-        current_user.organization_id
+        db=db,
+        task_id=task_id,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
     )
 
     if deleted is None:

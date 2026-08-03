@@ -26,6 +26,7 @@ def create_task(
     db.commit()
     db.refresh(db_task)
 
+
     log_activity(
         db=db,
         action="created",
@@ -63,11 +64,11 @@ def get_task_by_id(
         .first()
     )
 
-
 def update_task(
     db: Session,
     task_id: int,
     organization_id: int,
+    user_id: int,
     updated_task: TaskUpdate
 ):
     task = get_task_by_id(
@@ -79,9 +80,7 @@ def update_task(
     if task is None:
         return None
 
-    update_data = updated_task.model_dump(
-        exclude_unset=True
-    )
+    update_data = updated_task.model_dump(exclude_unset=True)
 
     for key, value in update_data.items():
         setattr(task, key, value)
@@ -89,13 +88,23 @@ def update_task(
     db.commit()
     db.refresh(task)
 
+    log_activity(
+        db=db,
+        action="updated",
+        entity="task",
+        entity_id=task.id,
+        user_id=user_id,
+        organization_id=organization_id
+    )
+
     return task
 
 
 def delete_task(
     db: Session,
     task_id: int,
-    organization_id: int
+    organization_id: int,
+    user_id: int
 ):
     task = get_task_by_id(
         db,
@@ -106,7 +115,18 @@ def delete_task(
     if task is None:
         return None
 
+    deleted_task_id = task.id
+
     db.delete(task)
     db.commit()
+
+    log_activity(
+        db=db,
+        action="deleted",
+        entity="task",
+        entity_id=deleted_task_id,
+        user_id=user_id,
+        organization_id=organization_id
+    )
 
     return task

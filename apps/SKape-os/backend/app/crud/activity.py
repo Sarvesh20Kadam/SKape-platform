@@ -11,6 +11,9 @@ def log_activity(
     user_id: int,
     organization_id: int
 ):
+    print("========== LOG_ACTIVITY CALLED ==========")
+    print(action, entity, entity_id, user_id, organization_id)
+
     activity = Activity(
         action=action,
         entity=entity,
@@ -22,6 +25,8 @@ def log_activity(
     db.add(activity)
     db.commit()
     db.refresh(activity)
+
+    print("Activity Saved:", activity.id)
 
     return activity
 
