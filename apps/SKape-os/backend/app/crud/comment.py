@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-
+from app.crud.activity import log_activity
 from app.models.comment import Comment
 from app.schemas.comment import (
     CommentCreate,
@@ -24,6 +24,15 @@ def create_comment(
     db.commit()
     db.refresh(db_comment)
 
+    log_activity(
+        db=db,
+        action="created",
+        entity="comment",
+        entity_id=db_comment.id,
+        user_id=user_id,
+        organization_id=organization_id
+    )
+
     return db_comment
 
 
@@ -45,8 +54,9 @@ def get_comments(
 def update_comment(
     db: Session,
     comment_id: int,
-    content: str,
-    organization_id: int
+    organization_id: int,
+    user_id: int,
+    updated_comment: CommentUpdate
 ):
     comment = (
         db.query(Comment)
@@ -60,10 +70,21 @@ def update_comment(
     if comment is None:
         return None
 
-    comment.content = content
+    comment.content = updated_comment.content
 
     db.commit()
     db.refresh(comment)
+
+    print("COMMENT UPDATE FUNCTION EXECUTED")
+
+    log_activity(
+        db=db,
+        action="updated",
+        entity="comment",
+        entity_id=comment.id,
+        user_id=user_id,
+        organization_id=organization_id
+    )
 
     return comment
 
@@ -71,7 +92,8 @@ def update_comment(
 def delete_comment(
     db: Session,
     comment_id: int,
-    organization_id: int
+    organization_id: int,
+    user_id: int
 ):
     comment = (
         db.query(Comment)
@@ -85,7 +107,20 @@ def delete_comment(
     if comment is None:
         return None
 
+    deleted_comment_id = comment.id
+
     db.delete(comment)
     db.commit()
+
+    print("COMMENT DELETE FUNCTION EXECUTED")
+
+    log_activity(
+        db=db,
+        action="deleted",
+        entity="comment",
+        entity_id=deleted_comment_id,
+        user_id=user_id,
+        organization_id=organization_id
+    )
 
     return comment

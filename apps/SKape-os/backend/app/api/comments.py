@@ -90,11 +90,12 @@ def update(
     )
 ):
     updated = update_comment(
-        db,
-        comment_id,
-        comment.content,
-        current_user.organization_id
-    )
+    db=db,
+    comment_id=comment_id,
+    organization_id=current_user.organization_id,
+    user_id=current_user.id,
+    updated_comment=comment,
+)
 
     if updated is None:
         raise HTTPException(
@@ -120,10 +121,13 @@ def delete(
         )
     )
 ):
+    print("DELETE API HIT")
+
     deleted = delete_comment(
-        db,
-        comment_id,
-        current_user.organization_id
+        db=db,
+        comment_id=comment_id,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
     )
 
     if deleted is None:
