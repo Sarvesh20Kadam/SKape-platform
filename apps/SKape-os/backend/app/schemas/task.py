@@ -23,6 +23,7 @@ class TaskUpdate(BaseModel):
     priority: str | None = None
     due_date: datetime | None = None
     assigned_to: int | None = None
+    project_id: int | None = None
 
 class TaskResponse(TaskBase):
     id: int

@@ -4,6 +4,8 @@ from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.crud.activity import log_activity
 
+from app.models.user import User
+from app.models.project import Project
 
 def create_task(
     db: Session,
@@ -11,6 +13,31 @@ def create_task(
     organization_id: int,
     user_id: int
 ):
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == task.project_id,
+            Project.organization_id == organization_id
+        )
+        .first()
+    )
+
+    if project is None:
+        raise ValueError("Project not found")
+
+    if task.assigned_to is not None:
+        user = (
+            db.query(User)
+            .filter(
+                User.id == task.assigned_to,
+                User.organization_id == organization_id
+            )
+            .first()
+        )
+
+        if user is None:
+            raise ValueError("Assigned user not found")
+
     db_task = Task(
         title=task.title,
         description=task.description,
@@ -25,7 +52,6 @@ def create_task(
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
-
 
     log_activity(
         db=db,
@@ -71,6 +97,8 @@ def update_task(
     user_id: int,
     updated_task: TaskUpdate
 ):
+    print("UPDATE TASK VALIDATION EXECUTED")
+
     task = get_task_by_id(
         db,
         task_id,
@@ -80,7 +108,40 @@ def update_task(
     if task is None:
         return None
 
-    update_data = updated_task.model_dump(exclude_unset=True)
+    update_data = updated_task.model_dump(
+        exclude_unset=True
+    )
+    print(update_data)
+    # Validate project if being updated
+    if "project_id" in update_data:
+        project = (
+            db.query(Project)
+            .filter(
+                Project.id == update_data["project_id"],
+                Project.organization_id == organization_id
+            )
+            .first()
+        )
+
+        if project is None:
+            raise ValueError("Project not found")
+
+    # Validate assignee if being updated
+    if (
+        "assigned_to" in update_data
+        and update_data["assigned_to"] is not None
+    ):
+        user = (
+            db.query(User)
+            .filter(
+                User.id == update_data["assigned_to"],
+                User.organization_id == organization_id
+            )
+            .first()
+        )
+
+        if user is None:
+            raise ValueError("Assigned user not found")
 
     for key, value in update_data.items():
         setattr(task, key, value)

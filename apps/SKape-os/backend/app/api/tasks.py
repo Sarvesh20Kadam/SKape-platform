@@ -31,14 +31,27 @@ router = APIRouter(
 def create(
     task: TaskCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner", "admin", "manager"))
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager"
+        )
+    )
 ):
-    return db_create_task(
-    db,
-    task,
-    current_user.organization_id,
-    current_user.id
-)
+    try:
+        return db_create_task(
+            db=db,
+            task=task,
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 
 @router.get("/", response_model=List[TaskResponse])
@@ -100,22 +113,28 @@ def update(
         )
     )
 ):
-
-    updated = db_update_task(
-        db=db,
-        task_id=task_id,
-        organization_id=current_user.organization_id,
-        user_id=current_user.id,
-        updated_task=task,
-    )
-
-    if updated is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found"
+    try:
+        updated = db_update_task(
+            db=db,
+            task_id=task_id,
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+            updated_task=task,
         )
 
-    return updated
+        if updated is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found"
+            )
+
+        return updated
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 
 @router.delete("/{task_id}", response_model=TaskResponse)
