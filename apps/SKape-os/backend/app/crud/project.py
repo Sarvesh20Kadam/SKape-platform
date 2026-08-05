@@ -35,15 +35,21 @@ def create_project(
 
 def get_projects(
     db: Session,
-    organization_id: int
+    organization_id: int,
+    skip: int = 0,
+    limit: int = 10
 ):
     return (
         db.query(Project)
-        .filter(Project.organization_id == organization_id)
+        .filter(
+            Project.organization_id == organization_id
+        )
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
-
+    
 def get_project_by_id(
     db: Session,
     project_id: int,

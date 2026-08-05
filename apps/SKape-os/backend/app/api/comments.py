@@ -55,6 +55,8 @@ def create(
 )
 def get_all(
     task_id: int,
+    skip: int = 0,
+    limit: int = 10,
     db: Session = Depends(get_db),
     current_user=Depends(
         require_role(
@@ -66,11 +68,14 @@ def get_all(
     )
 ):
     return get_comments(
-        db,
-        task_id,
-        current_user.organization_id
+        db=db,
+        task_id=task_id,
+        organization_id=current_user.organization_id,
+        skip=skip,
+        limit=limit,
     )
 
+    
 
 @router.put(
     "/{comment_id}",

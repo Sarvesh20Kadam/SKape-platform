@@ -44,13 +44,24 @@ def create(
 
 
 @router.get("/", response_model=List[ProjectResponse])
-def get_all_projects(
+def get_all(
+    skip: int = 0,
+    limit: int = 10,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner", "admin", "manager", "employee"))
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee"
+        )
+    )
 ):
     return db_get_projects(
-        db,
-        current_user.organization_id
+        db=db,
+        organization_id=current_user.organization_id,
+        skip=skip,
+        limit=limit,
     )
 
 

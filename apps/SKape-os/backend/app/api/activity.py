@@ -15,11 +15,10 @@ router = APIRouter(
 )
 
 
-@router.get(
-    "/",
-    response_model=List[ActivityResponse]
-)
+@router.get("/", response_model=List[ActivityResponse])
 def get_all(
+    skip: int = 0,
+    limit: int = 10,
     db: Session = Depends(get_db),
     current_user=Depends(
         require_role(
@@ -31,6 +30,8 @@ def get_all(
     )
 ):
     return get_activities(
-        db,
-        current_user.organization_id
+        db=db,
+        organization_id=current_user.organization_id,
+        skip=skip,
+        limit=limit,
     )

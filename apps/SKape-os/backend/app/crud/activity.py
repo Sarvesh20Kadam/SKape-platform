@@ -33,7 +33,9 @@ def log_activity(
 
 def get_activities(
     db: Session,
-    organization_id: int
+    organization_id: int,
+    skip: int = 0,
+    limit: int = 10
 ):
     return (
         db.query(Activity)
@@ -41,5 +43,7 @@ def get_activities(
             Activity.organization_id == organization_id
         )
         .order_by(Activity.created_at.desc())
+        .offset(skip)
+        .limit(limit)
         .all()
     )

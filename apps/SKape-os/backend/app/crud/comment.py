@@ -39,14 +39,18 @@ def create_comment(
 def get_comments(
     db: Session,
     task_id: int,
-    organization_id: int
+    organization_id: int,
+    skip: int = 0,
+    limit: int = 10
 ):
     return (
         db.query(Comment)
         .filter(
             Comment.task_id == task_id,
-            Comment.organization_id == organization_id,
+            Comment.organization_id == organization_id
         )
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
