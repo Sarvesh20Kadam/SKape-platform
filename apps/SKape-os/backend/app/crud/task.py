@@ -67,11 +67,17 @@ def create_task(
 
 def get_tasks(
     db: Session,
-    organization_id: int
+    organization_id: int,
+    skip: int = 0,
+    limit: int = 10
 ):
     return (
         db.query(Task)
-        .filter(Task.organization_id == organization_id)
+        .filter(
+            Task.organization_id == organization_id
+        )
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
@@ -89,6 +95,7 @@ def get_task_by_id(
         )
         .first()
     )
+
 
 def update_task(
     db: Session,

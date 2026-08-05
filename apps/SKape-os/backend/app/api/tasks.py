@@ -56,6 +56,8 @@ def create(
 
 @router.get("/", response_model=List[TaskResponse])
 def get_all(
+    skip: int = 0,
+    limit: int = 10,
     db: Session = Depends(get_db),
     current_user=Depends(
         require_role(
@@ -66,9 +68,13 @@ def get_all(
         )
     )
 ):
+    print(f"GET TASKS -> skip={skip}, limit={limit}")
+    
     return db_get_tasks(
-        db,
-        current_user.organization_id
+        db=db,
+        organization_id=current_user.organization_id,
+        skip=skip,
+        limit=limit,
     )
 
 
