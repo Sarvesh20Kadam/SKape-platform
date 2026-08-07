@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { login } from "../../../services/auth.service";
+import { useAuth } from "../../../context/AuthContext";
 
 import {
   loginSchema,
@@ -12,6 +13,8 @@ import {
 
 function LoginForm() {
   const navigate = useNavigate();
+
+  const { login: loginUser } = useAuth();
 
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,29 +31,27 @@ function LoginForm() {
     try {
       setServerError("");
       setLoading(true);
-  
+
       const response = await login(
         data.email,
         data.password
       );
-  
+
       console.log("LOGIN RESPONSE:", response);
-  
-      localStorage.setItem(
-        "access_token",
-        response.access_token
-      );
-  
+
+      // Store token through AuthContext
+      loginUser(response.access_token);
+
       console.log("TOKEN SAVED");
-  
+
       navigate("/dashboard");
-  
+
       console.log("NAVIGATED");
     } catch (error: any) {
       console.error("LOGIN ERROR:", error);
       console.error("RESPONSE:", error.response);
       console.error("DATA:", error.response?.data);
-  
+
       setServerError(
         error.response?.data?.detail ??
         error.message ??

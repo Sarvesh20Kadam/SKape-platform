@@ -14,7 +14,8 @@ export async function login(
     formData,
     {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type":
+          "application/x-www-form-urlencoded",
       },
     }
   );
