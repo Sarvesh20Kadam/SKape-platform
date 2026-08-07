@@ -28,28 +28,33 @@ function LoginForm() {
     try {
       setServerError("");
       setLoading(true);
-
+  
       const response = await login(
         data.email,
         data.password
       );
-      
+  
       console.log("LOGIN RESPONSE:", response);
-      
+  
       localStorage.setItem(
         "access_token",
         response.access_token
       );
-      
+  
       console.log("TOKEN SAVED");
-      
+  
       navigate("/dashboard");
-      
+  
       console.log("NAVIGATED");
     } catch (error: any) {
+      console.error("LOGIN ERROR:", error);
+      console.error("RESPONSE:", error.response);
+      console.error("DATA:", error.response?.data);
+  
       setServerError(
         error.response?.data?.detail ??
-          "Login failed"
+        error.message ??
+        "Login failed"
       );
     } finally {
       setLoading(false);

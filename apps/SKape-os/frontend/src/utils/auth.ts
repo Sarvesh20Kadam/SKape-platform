@@ -13,5 +13,5 @@ export function removeToken() {
 }
 
 export function isAuthenticated() {
-    return !!getToken();
-}
+    return !!localStorage.getItem("access_token");
+  }

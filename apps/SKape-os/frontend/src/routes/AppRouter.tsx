@@ -1,32 +1,28 @@
 import {
-  Route,
-  Routes,
-} from "react-router-dom";
-
-import LoginPage from "../pages/LoginPage";
-import DashboardPage from "../pages/DashboardPage";
-import ProtectedRoute from "./ProtectedRoute";
-
-function AppRouter() {
-  return (
+    Route,
+    Routes,
+  } from "react-router-dom";
+  
+  import LoginPage from "../pages/LoginPage";
+  import DashboardPage from "../pages/DashboardPage";
+  import ProtectedRoute from "./ProtectedRoute";
+  
+  function AppRouter() {
+    return (
       <Routes>
-
+        <Route
+          path="/"
+          element={<LoginPage />}
+        />
+  
+        <Route element={<ProtectedRoute />}>
           <Route
-              path="/"
-              element={<LoginPage />}
+            path="/dashboard"
+            element={<DashboardPage />}
           />
-
-          <Route element={<ProtectedRoute />}>
-
-              <Route
-                  path="/dashboard"
-                  element={<DashboardPage />}
-              />
-
-          </Route>
-
+        </Route>
       </Routes>
-  );
-}
-
-export default AppRouter;
+    );
+  }
+  
+  export default AppRouter;
