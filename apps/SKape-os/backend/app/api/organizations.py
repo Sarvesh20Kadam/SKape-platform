@@ -81,10 +81,7 @@ def get_one(
     )
 
     if organization is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Organization not found"
-        )
+        raise NotFoundException("Organization")
 
     return organization
 

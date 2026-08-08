@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.permissions import require_role
+from app.exceptions import NotFoundException
 
 from app.crud.project import (
     create_project as db_create_project,
@@ -78,10 +79,7 @@ def get_project(
     )
 
     if project is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Project not found"
-        )
+        raise NotFoundException("Project")
 
     return project
 

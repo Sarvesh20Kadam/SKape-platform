@@ -9,3 +9,83 @@ body,
 body {
   margin: 0;
 }
+
+/* =========================================================
+   SKAPE GLOBAL DESIGN SYSTEM
+   ========================================================= */
+
+   html {
+    background: var(--skape-bg);
+    color-scheme: dark;
+  }
+  
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+  
+    background:
+      radial-gradient(
+        circle at 50% -20%,
+        rgba(0, 182, 122, 0.045),
+        transparent 35%
+      ),
+      var(--skape-bg);
+  
+    color: var(--skape-text-primary);
+  
+    font-family: var(--font-sans);
+  
+    font-size: var(--text-base);
+    font-weight: 500;
+  
+    line-height: 1.5;
+  
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  
+    text-rendering: optimizeLegibility;
+  }
+  
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+  
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  ::selection {
+    background: rgba(0, 182, 122, 0.25);
+    color: var(--skape-text-primary);
+  }
+  
+  /* Scrollbar */
+  
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 999px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+  }
+  
+  /* Focus accessibility */
+  
+  :focus-visible {
+    outline: 2px solid var(--skape-brand);
+    outline-offset: 2px;
+  }

@@ -103,10 +103,7 @@ def update(
 )
 
     if updated is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Comment not found"
-        )
+        raise NotFoundException("Comment")
 
     return updated
 

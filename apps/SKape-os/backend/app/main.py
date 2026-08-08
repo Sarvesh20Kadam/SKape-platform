@@ -12,11 +12,42 @@ from app.api.tasks import router as tasks_router
 from app.api.dashboard import router as dashboard_router
 from app.api.comments import router as comments_router
 from app.api.activity import router as activity_router
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.exceptions import (
+    NotFoundException,
+    BadRequestException,
+)
+
+from app.exception_handlers import (
+    not_found_exception_handler,
+    bad_request_exception_handler,
+)
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_exception_handler(
+    NotFoundException,
+    not_found_exception_handler,
+)
+
+app.add_exception_handler(
+    BadRequestException,
+    bad_request_exception_handler,
 )
 app.include_router(
     health_router,

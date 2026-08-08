@@ -2,65 +2,119 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
 
-type AuthContextType = {
+type AuthContextValue = {
   token: string | null;
   isAuthenticated: boolean;
+  isInitializing: boolean;
   login: (token: string) => void;
   logout: () => void;
 };
 
 const AuthContext =
-  createContext<AuthContextType | null>(null);
+  createContext<AuthContextValue | undefined>(
+    undefined
+  );
 
-type Props = {
+type AuthProviderProps = {
   children: ReactNode;
 };
 
+const ACCESS_TOKEN_KEY = "access_token";
+
 export function AuthProvider({
   children,
-}: Props) {
+}: AuthProviderProps) {
   const [token, setToken] =
     useState<string | null>(null);
 
-  useEffect(() => {
-    const stored =
-      localStorage.getItem("access_token");
+  const [isInitializing, setIsInitializing] =
+    useState(true);
 
-    if (stored) {
-      setToken(stored);
+  // Restore authentication when the application starts
+  useEffect(() => {
+    try {
+      const storedToken =
+        localStorage.getItem(ACCESS_TOKEN_KEY);
+
+      if (storedToken) {
+        setToken(storedToken);
+      }
+    } catch (error) {
+      console.error(
+        "Failed to restore authentication state:",
+        error
+      );
+    } finally {
+      setIsInitializing(false);
     }
   }, []);
 
-  function login(token: string) {
-    localStorage.setItem(
-      "access_token",
-      token
+  // Handle a 401 response from Axios
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      localStorage.removeItem(
+        ACCESS_TOKEN_KEY
+      );
+
+      setToken(null);
+    };
+
+    window.addEventListener(
+      "auth:unauthorized",
+      handleUnauthorized
     );
 
-    setToken(token);
-  }
+    return () => {
+      window.removeEventListener(
+        "auth:unauthorized",
+        handleUnauthorized
+      );
+    };
+  }, []);
 
-  function logout() {
+  // Login
+  const login = (newToken: string) => {
+    if (!newToken) {
+      throw new Error(
+        "Cannot authenticate without a token."
+      );
+    }
+
+    localStorage.setItem(
+      ACCESS_TOKEN_KEY,
+      newToken
+    );
+
+    setToken(newToken);
+  };
+
+  // Logout
+  const logout = () => {
     localStorage.removeItem(
-      "access_token"
+      ACCESS_TOKEN_KEY
     );
 
     setToken(null);
-  }
+  };
+
+  const value = useMemo(
+    () => ({
+      token,
+      isAuthenticated: Boolean(token),
+      isInitializing,
+      login,
+      logout,
+    }),
+    [token, isInitializing]
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        token,
-        isAuthenticated: !!token,
-        login,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -72,7 +126,7 @@ export function useAuth() {
 
   if (!context) {
     throw new Error(
-      "useAuth must be used inside AuthProvider"
+      "useAuth must be used inside AuthProvider."
     );
   }
 

@@ -1,98 +1,258 @@
-import { Link, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  FolderKanban,
-  CheckSquare,
   Building2,
-  Calendar,
+  CheckSquare,
+  FolderKanban,
+  LayoutDashboard,
   Settings,
-  LogOut,
+  X,
+  type LucideIcon,
 } from "lucide-react";
+import { NavLink } from "react-router-dom";
 
-const menuItems = [
+type NavigationItem = {
+  label: string;
+  path: string;
+  icon: LucideIcon;
+};
+
+type SidebarProps = {
+  open: boolean;
+  onClose: () => void;
+};
+
+const workspaceNavigation: NavigationItem[] = [
   {
-    name: "Dashboard",
-    icon: LayoutDashboard,
+    label: "Dashboard",
     path: "/dashboard",
+    icon: LayoutDashboard,
   },
   {
-    name: "Organizations",
-    icon: Building2,
-    path: "/organizations",
-  },
-  {
-    name: "Projects",
-    icon: FolderKanban,
+    label: "Projects",
     path: "/projects",
+    icon: FolderKanban,
   },
   {
-    name: "Tasks",
-    icon: CheckSquare,
+    label: "Tasks",
     path: "/tasks",
-  },
-  {
-    name: "Calendar",
-    icon: Calendar,
-    path: "/calendar",
-  },
-  {
-    name: "Settings",
-    icon: Settings,
-    path: "/settings",
+    icon: CheckSquare,
   },
 ];
 
-function Sidebar() {
-  const location = useLocation();
+const managementNavigation: NavigationItem[] = [
+  {
+    label: "Organization",
+    path: "/organizations",
+    icon: Building2,
+  },
+  {
+    label: "Settings",
+    path: "/settings",
+    icon: Settings,
+  },
+];
 
+function Sidebar({
+  open,
+  onClose,
+}: SidebarProps) {
   return (
-    <aside className="flex h-screen w-72 flex-col border-r border-zinc-800 bg-zinc-950">
+    <>
+      {/* Mobile backdrop */}
+      <button
+        type="button"
+        aria-label="Close navigation"
+        onClick={onClose}
+        className={`
+          fixed
+          inset-0
+          z-40
+          bg-black/60
+          backdrop-blur-[2px]
+          transition-opacity
+          duration-200
+          lg:hidden
+          ${
+            open
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0"
+          }
+        `}
+      />
 
-      <div className="border-b border-zinc-800 px-8 py-6">
-        <h1 className="text-3xl font-bold tracking-tight text-white">
-          SKape
-        </h1>
+      {/* Navigation drawer */}
+      <aside
+        aria-label="Primary navigation"
+        className={`
+          fixed
+          inset-y-0
+          left-0
+          z-50
+          flex
+          w-[280px]
+          shrink-0
+          flex-col
+          border-r
+          border-zinc-800/80
+          bg-zinc-950
+          shadow-2xl
+          transition-transform
+          duration-200
+          ease-out
+          lg:static
+          lg:z-auto
+          lg:w-[248px]
+          lg:translate-x-0
+          lg:shadow-none
+          ${
+            open
+              ? "translate-x-0"
+              : "-translate-x-full"
+          }
+        `}
+      >
+        {/* Brand */}
+        <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-zinc-800/70 px-5 lg:px-6">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-500 text-sm font-extrabold tracking-[-0.05em] text-zinc-950">
+              S
+            </span>
 
-        <p className="mt-2 text-sm text-zinc-500">
-          Project Management
-        </p>
-      </div>
+            <span className="text-[17px] font-bold tracking-[-0.045em] text-zinc-100">
+              SKape
+            </span>
+          </div>
 
-      <nav className="flex-1 px-4 py-6">
+          {/* Mobile close */}
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={onClose}
+            className="
+              flex
+              h-9
+              w-9
+              items-center
+              justify-center
+              rounded-lg
+              text-zinc-500
+              transition-colors
+              hover:bg-zinc-900
+              hover:text-zinc-200
+              lg:hidden
+            "
+          >
+            <X
+              size={18}
+              strokeWidth={1.8}
+            />
+          </button>
+        </div>
 
-        {menuItems.map((item) => {
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-6">
+          <NavigationSection
+            label="Workspace"
+            items={workspaceNavigation}
+            onNavigate={onClose}
+          />
+
+          <div className="mt-8">
+            <NavigationSection
+              label="Management"
+              items={managementNavigation}
+              onNavigate={onClose}
+            />
+          </div>
+        </nav>
+
+        {/* Workspace status */}
+        <div className="shrink-0 border-t border-zinc-800/70 p-4">
+          <div className="flex items-center gap-3 rounded-lg px-2 py-2">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-40" />
+
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-zinc-400">
+                Workspace online
+              </p>
+
+              <p className="mt-0.5 truncate text-[11px] text-zinc-600">
+                All systems operational
+              </p>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+type NavigationSectionProps = {
+  label: string;
+  items: NavigationItem[];
+  onNavigate: () => void;
+};
+
+function NavigationSection({
+  label,
+  items,
+  onNavigate,
+}: NavigationSectionProps) {
+  return (
+    <div>
+      <p className="px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
+        {label}
+      </p>
+
+      <div className="mt-3 space-y-1">
+        {items.map((item) => {
           const Icon = item.icon;
 
-          const active =
-            location.pathname === item.path;
-
           return (
-            <Link
-              key={item.name}
+            <NavLink
+              key={item.path}
               to={item.path}
-              className={`mb-2 flex items-center gap-3 rounded-xl px-4 py-3 transition ${
-                active
-                  ? "bg-emerald-600 text-white"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-              }`}
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                [
+                  "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150",
+                  isActive
+                    ? "bg-zinc-800/80 font-semibold text-zinc-100"
+                    : "font-medium text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200",
+                ].join(" ")
+              }
             >
-              <Icon size={20} />
+              {({ isActive }) => (
+                <>
+                  <Icon
+                    size={17}
+                    strokeWidth={isActive ? 2 : 1.7}
+                    className={
+                      isActive
+                        ? "text-emerald-400"
+                        : "text-zinc-600 transition-colors group-hover:text-zinc-400"
+                    }
+                    aria-hidden="true"
+                  />
 
-              {item.name}
-            </Link>
+                  <span>{item.label}</span>
+
+                  {isActive && (
+                    <span
+                      aria-hidden="true"
+                      className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
+                    />
+                  )}
+                </>
+              )}
+            </NavLink>
           );
         })}
-
-      </nav>
-
-      <div className="border-t border-zinc-800 p-4">
-        <button className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400">
-          <LogOut size={20} />
-          Logout
-        </button>
       </div>
-
-    </aside>
+    </div>
   );
 }
 

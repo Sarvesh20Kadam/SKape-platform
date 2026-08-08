@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from sqlalchemy import or_
 from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.crud.activity import log_activity
@@ -65,17 +66,45 @@ def create_task(
     return db_task
 
 
+
 def get_tasks(
     db: Session,
     organization_id: int,
     skip: int = 0,
-    limit: int = 10
+    limit: int = 10,
+    status: str | None = None,
+    priority: str | None = None,
+    assigned_to: int | None = None,
+    project_id: int | None = None,
+    search: str | None = None,
 ):
-    return (
+    query = (
         db.query(Task)
-        .filter(
-            Task.organization_id == organization_id
+        .filter(Task.organization_id == organization_id)
+    )
+
+    if status:
+        query = query.filter(Task.status == status)
+
+    if priority:
+        query = query.filter(Task.priority == priority)
+
+    if assigned_to:
+        query = query.filter(Task.assigned_to == assigned_to)
+
+    if project_id:
+        query = query.filter(Task.project_id == project_id)
+
+    if search:
+        query = query.filter(
+            or_(
+                Task.title.ilike(f"%{search}%"),
+                Task.description.ilike(f"%{search}%")
+            )
         )
+
+    return (
+        query
         .offset(skip)
         .limit(limit)
         .all()
@@ -96,6 +125,7 @@ def get_task_by_id(
         .first()
     )
 
+    
 
 def update_task(
     db: Session,
