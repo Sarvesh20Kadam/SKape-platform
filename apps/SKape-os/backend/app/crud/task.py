@@ -1,70 +1,8 @@
 from sqlalchemy.orm import Session
 
-from sqlalchemy import or_
 from app.models.task import Task
-from app.schemas.task import TaskCreate, TaskUpdate
-from app.crud.activity import log_activity
-
-from app.models.user import User
 from app.models.project import Project
-
-def create_task(
-    db: Session,
-    task: TaskCreate,
-    organization_id: int,
-    user_id: int
-):
-    project = (
-        db.query(Project)
-        .filter(
-            Project.id == task.project_id,
-            Project.organization_id == organization_id
-        )
-        .first()
-    )
-
-    if project is None:
-        raise ValueError("Project not found")
-
-    if task.assigned_to is not None:
-        user = (
-            db.query(User)
-            .filter(
-                User.id == task.assigned_to,
-                User.organization_id == organization_id
-            )
-            .first()
-        )
-
-        if user is None:
-            raise ValueError("Assigned user not found")
-
-    db_task = Task(
-        title=task.title,
-        description=task.description,
-        priority=task.priority,
-        due_date=task.due_date,
-        project_id=task.project_id,
-        assigned_to=task.assigned_to,
-        organization_id=organization_id,
-        status="todo",
-    )
-
-    db.add(db_task)
-    db.commit()
-    db.refresh(db_task)
-
-    log_activity(
-        db=db,
-        action="created",
-        entity="task",
-        entity_id=db_task.id,
-        user_id=user_id,
-        organization_id=organization_id
-    )
-
-    return db_task
-
+from app.models.user import User
 
 
 def get_tasks(
@@ -78,122 +16,283 @@ def get_tasks(
     project_id: int | None = None,
     search: str | None = None,
 ):
+    """
+    Return tasks belonging to the current organization.
+
+    Supports:
+    - pagination
+    - status filtering
+    - priority filtering
+    - assignee filtering
+    - project filtering
+    - title/description search
+    """
+
     query = (
         db.query(Task)
-        .filter(Task.organization_id == organization_id)
+        .filter(
+            Task.organization_id == organization_id
+        )
     )
 
-    if status:
-        query = query.filter(Task.status == status)
-
-    if priority:
-        query = query.filter(Task.priority == priority)
-
-    if assigned_to:
-        query = query.filter(Task.assigned_to == assigned_to)
-
-    if project_id:
-        query = query.filter(Task.project_id == project_id)
-
-    if search:
+    # Status filter
+    if status is not None:
         query = query.filter(
-            or_(
-                Task.title.ilike(f"%{search}%"),
-                Task.description.ilike(f"%{search}%")
-            )
+            Task.status == status
         )
 
-    return (
-        query
-        .offset(skip)
-        .limit(limit)
-        .all()
+    # Priority filter
+    if priority is not None:
+        query = query.filter(
+            Task.priority == priority
+        )
+
+    # Assignee filter
+    if assigned_to is not None:
+        query = query.filter(
+            Task.assigned_to == assigned_to
+        )
+
+    # Project filter
+    if project_id is not None:
+        query = query.filter(
+            Task.project_id == project_id
+        )
+
+    # Search
+    if search:
+        search_term = f"%{search.strip()}%"
+
+        query = query.filter(
+            (Task.title.ilike(search_term))
+            | (Task.description.ilike(search_term))
+        )
+
+    # Newest tasks first
+    query = query.order_by(
+        Task.created_at.desc()
     )
+
+    # Pagination
+    query = query.offset(skip).limit(limit)
+
+    return query.all()
 
 
 def get_task_by_id(
     db: Session,
     task_id: int,
-    organization_id: int
+    organization_id: int,
 ):
+    """
+    Return one task only if it belongs
+    to the current organization.
+    """
+
     return (
         db.query(Task)
         .filter(
             Task.id == task_id,
-            Task.organization_id == organization_id
+            Task.organization_id == organization_id,
         )
         .first()
     )
 
-    
+
+def create_task(
+    db: Session,
+    task,
+    organization_id: int,
+    user_id: int,
+):
+    """
+    Create a task inside the current organization.
+    """
+
+    # -------------------------------------------------
+    # Validate project
+    # -------------------------------------------------
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == task.project_id,
+            Project.organization_id == organization_id,
+        )
+        .first()
+    )
+
+    if project is None:
+        raise ValueError(
+            "Project not found in this organization."
+        )
+
+    # -------------------------------------------------
+    # Validate assignee
+    # -------------------------------------------------
+
+    if task.assigned_to is not None:
+
+        assignee = (
+            db.query(User)
+            .filter(
+                User.id == task.assigned_to,
+                User.organization_id == organization_id,
+            )
+            .first()
+        )
+
+        if assignee is None:
+            raise ValueError(
+                "Assigned user not found in this organization."
+            )
+
+    # -------------------------------------------------
+    # Create task
+    # -------------------------------------------------
+
+    new_task = Task(
+        title=task.title.strip(),
+        description=(
+            task.description.strip()
+            if task.description
+            else None
+        ),
+        status="todo",
+        priority=task.priority,
+        project_id=task.project_id,
+        assigned_to=task.assigned_to,
+        due_date=task.due_date,
+        organization_id=organization_id,
+    )
+
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+
+    return new_task
+
 
 def update_task(
     db: Session,
     task_id: int,
     organization_id: int,
     user_id: int,
-    updated_task: TaskUpdate
+    updated_task,
 ):
-    print("UPDATE TASK VALIDATION EXECUTED")
+    """
+    Update a task belonging to the current organization.
+    """
 
-    task = get_task_by_id(
-        db,
-        task_id,
-        organization_id
+    task = (
+        db.query(Task)
+        .filter(
+            Task.id == task_id,
+            Task.organization_id == organization_id,
+        )
+        .first()
     )
 
     if task is None:
         return None
 
+    # -------------------------------------------------
+    # Only update fields actually supplied
+    # -------------------------------------------------
+
     update_data = updated_task.model_dump(
         exclude_unset=True
     )
-    print(update_data)
-    # Validate project if being updated
+
+    # -------------------------------------------------
+    # Validate project change
+    # -------------------------------------------------
+
     if "project_id" in update_data:
+
+        new_project_id = update_data["project_id"]
+
         project = (
             db.query(Project)
             .filter(
-                Project.id == update_data["project_id"],
-                Project.organization_id == organization_id
+                Project.id == new_project_id,
+                Project.organization_id == organization_id,
             )
             .first()
         )
 
         if project is None:
-            raise ValueError("Project not found")
-
-    # Validate assignee if being updated
-    if (
-        "assigned_to" in update_data
-        and update_data["assigned_to"] is not None
-    ):
-        user = (
-            db.query(User)
-            .filter(
-                User.id == update_data["assigned_to"],
-                User.organization_id == organization_id
+            raise ValueError(
+                "Project not found in this organization."
             )
-            .first()
+
+    # -------------------------------------------------
+    # Validate assignee change
+    # -------------------------------------------------
+
+    if "assigned_to" in update_data:
+
+        new_assigned_to = update_data["assigned_to"]
+
+        if new_assigned_to is not None:
+
+            assignee = (
+                db.query(User)
+                .filter(
+                    User.id == new_assigned_to,
+                    User.organization_id
+                    == organization_id,
+                )
+                .first()
+            )
+
+            if assignee is None:
+                raise ValueError(
+                    "Assigned user not found in this organization."
+                )
+
+    # -------------------------------------------------
+    # Apply updates
+    # -------------------------------------------------
+
+    if "title" in update_data:
+
+        title = update_data["title"]
+
+        if title is None or not title.strip():
+            raise ValueError(
+                "Task title cannot be empty."
+            )
+
+        task.title = title.strip()
+
+    if "description" in update_data:
+
+        description = update_data["description"]
+
+        task.description = (
+            description.strip()
+            if description
+            else None
         )
 
-        if user is None:
-            raise ValueError("Assigned user not found")
+    if "status" in update_data:
+        task.status = update_data["status"]
 
-    for key, value in update_data.items():
-        setattr(task, key, value)
+    if "priority" in update_data:
+        task.priority = update_data["priority"]
+
+    if "due_date" in update_data:
+        task.due_date = update_data["due_date"]
+
+    if "assigned_to" in update_data:
+        task.assigned_to = update_data["assigned_to"]
+
+    if "project_id" in update_data:
+        task.project_id = update_data["project_id"]
 
     db.commit()
     db.refresh(task)
-
-    log_activity(
-        db=db,
-        action="updated",
-        entity="task",
-        entity_id=task.id,
-        user_id=user_id,
-        organization_id=organization_id
-    )
 
     return task
 
@@ -202,29 +301,25 @@ def delete_task(
     db: Session,
     task_id: int,
     organization_id: int,
-    user_id: int
+    user_id: int,
 ):
-    task = get_task_by_id(
-        db,
-        task_id,
-        organization_id
+    """
+    Delete a task belonging to the current organization.
+    """
+
+    task = (
+        db.query(Task)
+        .filter(
+            Task.id == task_id,
+            Task.organization_id == organization_id,
+        )
+        .first()
     )
 
     if task is None:
         return None
 
-    deleted_task_id = task.id
-
     db.delete(task)
     db.commit()
-
-    log_activity(
-        db=db,
-        action="deleted",
-        entity="task",
-        entity_id=deleted_task_id,
-        user_id=user_id,
-        organization_id=organization_id
-    )
 
     return task
