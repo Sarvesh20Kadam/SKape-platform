@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 import {
   CheckSquare,
   ChevronDown,
@@ -11,6 +13,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../components/layout/DashboardLayout";
+
 import CreateTaskModal from "../features/task/components/CreateTaskModal";
 import EditTaskModal from "../features/task/components/EditTaskModal";
 
@@ -25,6 +28,8 @@ import type {
 } from "../features/task/types/task.types";
 
 function TasksPage() {
+  const navigate = useNavigate();
+
   const {
     tasks,
     loading,
@@ -60,8 +65,11 @@ function TasksPage() {
     useState<"all" | TaskStatus>("all");
 
   /*
-   * Filter tasks locally for instant UI response.
+   * =========================================================
+   * FILTER TASKS
+   * =========================================================
    */
+
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -91,8 +99,11 @@ function TasksPage() {
   ]);
 
   /*
-   * Create task.
+   * =========================================================
+   * CREATE TASK
+   * =========================================================
    */
+
   const handleCreateTask = async (
     data: Parameters<typeof addTask>[0],
   ) => {
@@ -105,31 +116,43 @@ function TasksPage() {
   };
 
   /*
-   * Open edit modal.
+   * =========================================================
+   * OPEN EDIT MODAL
+   * =========================================================
    */
+
   const handleOpenEdit = (
     task: Task,
   ) => {
     setOpenMenuId(null);
+
     setSelectedTask(task);
+
     setEditModalOpen(true);
   };
 
   /*
-   * Close edit modal.
+   * =========================================================
+   * CLOSE EDIT MODAL
+   * =========================================================
    */
+
   const handleCloseEdit = () => {
     if (updating) {
       return;
     }
 
     setEditModalOpen(false);
+
     setSelectedTask(null);
   };
 
   /*
-   * Save edited task.
+   * =========================================================
+   * SAVE EDITED TASK
+   * =========================================================
    */
+
   const handleEditTask = async (
     taskId: number,
     data: UpdateTaskPayload,
@@ -142,23 +165,31 @@ function TasksPage() {
 
     if (updatedTask) {
       setEditModalOpen(false);
+
       setSelectedTask(null);
     }
   };
 
   /*
-   * Ask for delete confirmation.
+   * =========================================================
+   * REQUEST DELETE
+   * =========================================================
    */
+
   const handleRequestDelete = (
     task: Task,
   ) => {
     setOpenMenuId(null);
+
     setDeleteTaskId(task.id);
   };
 
   /*
-   * Cancel deletion.
+   * =========================================================
+   * CANCEL DELETE
+   * =========================================================
    */
+
   const handleCancelDelete = () => {
     if (deleting) {
       return;
@@ -168,8 +199,11 @@ function TasksPage() {
   };
 
   /*
-   * Delete task.
+   * =========================================================
+   * CONFIRM DELETE
+   * =========================================================
    */
+
   const handleConfirmDelete = async () => {
     if (deleteTaskId === null) {
       return;
@@ -188,19 +222,23 @@ function TasksPage() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
+
         {/* =====================================================
             PAGE HEADER
             ===================================================== */}
 
         <section className="border-b border-zinc-800/80 pb-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+
             <div>
               <div className="mb-3 flex items-center gap-2">
+
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
 
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
                   Workspace
                 </span>
+
               </div>
 
               <h1 className="text-3xl font-semibold tracking-[-0.03em] text-zinc-100">
@@ -242,16 +280,20 @@ function TasksPage() {
 
               New task
             </button>
+
           </div>
         </section>
 
         {/* =====================================================
-            TOOLBAR
+            SEARCH + FILTER
             ===================================================== */}
 
         <section className="flex flex-col gap-3 sm:flex-row">
+
           {/* Search */}
+
           <div className="relative min-w-0 flex-1">
+
             <Search
               size={17}
               strokeWidth={1.8}
@@ -296,10 +338,13 @@ function TasksPage() {
                 focus:ring-emerald-500/10
               "
             />
+
           </div>
 
           {/* Status filter */}
+
           <div className="relative">
+
             <Filter
               size={15}
               strokeWidth={1.8}
@@ -361,6 +406,7 @@ function TasksPage() {
               <option value="cancelled">
                 Cancelled
               </option>
+
             </select>
 
             <ChevronDown
@@ -374,7 +420,9 @@ function TasksPage() {
                 text-zinc-600
               "
             />
+
           </div>
+
         </section>
 
         {/* =====================================================
@@ -382,7 +430,9 @@ function TasksPage() {
             ===================================================== */}
 
         <div className="flex items-center justify-between">
+
           <div>
+
             <h2 className="text-sm font-semibold text-zinc-200">
               All tasks
             </h2>
@@ -393,7 +443,9 @@ function TasksPage() {
                 ? "task"
                 : "tasks"}
             </p>
+
           </div>
+
         </div>
 
         {/* =====================================================
@@ -402,6 +454,7 @@ function TasksPage() {
 
         {loading && (
           <div className="space-y-3">
+
             {[1, 2, 3].map(
               (item) => (
                 <div
@@ -417,6 +470,7 @@ function TasksPage() {
                 />
               ),
             )}
+
           </div>
         )}
 
@@ -449,9 +503,12 @@ function TasksPage() {
         {!loading &&
           !error &&
           filteredTasks.length > 0 && (
+
             <div className="space-y-2">
+
               {filteredTasks.map(
                 (task) => (
+
                   <TaskCard
                     key={task.id}
                     task={task}
@@ -459,6 +516,13 @@ function TasksPage() {
                       openMenuId ===
                       task.id
                     }
+
+                    onOpen={() =>
+                      navigate(
+                        `/tasks/${task.id}`,
+                      )
+                    }
+
                     onMenuToggle={() =>
                       setOpenMenuId(
                         (current) =>
@@ -468,19 +532,23 @@ function TasksPage() {
                             : task.id,
                       )
                     }
+
                     onEdit={() =>
                       handleOpenEdit(
                         task,
                       )
                     }
+
                     onDelete={() =>
                       handleRequestDelete(
                         task,
                       )
                     }
                   />
+
                 ),
               )}
+
             </div>
           )}
 
@@ -491,6 +559,7 @@ function TasksPage() {
         {!loading &&
           !error &&
           filteredTasks.length === 0 && (
+
             <div
               className="
                 rounded-xl
@@ -499,6 +568,7 @@ function TasksPage() {
                 bg-zinc-950
               "
             >
+
               <div
                 className="
                   flex
@@ -510,6 +580,7 @@ function TasksPage() {
                   text-center
                 "
               >
+
                 <div
                   className="
                     mb-4
@@ -544,6 +615,7 @@ function TasksPage() {
                 </p>
 
                 {tasks.length === 0 && (
+
                   <button
                     type="button"
                     onClick={() =>
@@ -568,12 +640,17 @@ function TasksPage() {
                     "
                   >
                     <Plus size={16} />
+
                     Create task
                   </button>
+
                 )}
+
               </div>
+
             </div>
           )}
+
       </div>
 
       {/* =====================================================
@@ -620,6 +697,7 @@ function TasksPage() {
           ===================================================== */}
 
       {deleteTaskId !== null && (
+
         <DeleteTaskDialog
           loading={deleting}
           onCancel={
@@ -629,7 +707,9 @@ function TasksPage() {
             handleConfirmDelete
           }
         />
+
       )}
+
     </DashboardLayout>
   );
 }
@@ -641,6 +721,7 @@ function TasksPage() {
 type TaskCardProps = {
   task: Task;
   menuOpen: boolean;
+  onOpen: () => void;
   onMenuToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -649,6 +730,7 @@ type TaskCardProps = {
 function TaskCard({
   task,
   menuOpen,
+  onOpen,
   onMenuToggle,
   onEdit,
   onDelete,
@@ -675,20 +757,43 @@ function TaskCard({
 
   return (
     <article
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (
+          event.key === "Enter" ||
+          event.key === " "
+        ) {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
       className="
         relative
+        cursor-pointer
         rounded-xl
         border
         border-zinc-800
         bg-zinc-950
         px-5
         py-4
+        outline-none
         transition-colors
         hover:border-zinc-700
+        hover:bg-zinc-900/30
+        focus-visible:border-emerald-500/40
+        focus-visible:ring-1
+        focus-visible:ring-emerald-500/20
       "
     >
+
       <div className="flex items-start gap-4">
-        {/* Task icon */}
+
+        {/* =================================================
+            TASK ICON
+            ================================================= */}
+
         <div
           className="
             mt-0.5
@@ -716,26 +821,59 @@ function TaskCard({
           />
         </div>
 
-        {/* Content */}
+        {/* =================================================
+            TASK CONTENT
+            ================================================= */}
+
         <div className="min-w-0 flex-1">
+
           <div className="flex items-center gap-2 pr-10">
+
             <h3 className="truncate text-sm font-semibold text-zinc-200">
               {task.title}
             </h3>
 
-            <span className="shrink-0 rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-zinc-500">
-              {statusLabel[task.status]}
+            <span
+              className={`
+                shrink-0
+                rounded-full
+                border
+                px-2
+                py-0.5
+                text-[10px]
+                font-semibold
+                tracking-[0.08em]
+                ${
+                  task.status ===
+                  "completed"
+                    ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                    : "border-zinc-800 text-zinc-500"
+                }
+              `}
+            >
+              {
+                statusLabel[
+                  task.status
+                ]
+              }
             </span>
+
           </div>
 
           {task.description && (
+
             <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-zinc-500">
               {task.description}
             </p>
+
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+
+            {/* Priority */}
+
             <div className="flex items-center gap-2">
+
               <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
                 Priority
               </span>
@@ -760,30 +898,52 @@ function TaskCard({
                   ]
                 }
               </span>
+
             </div>
+
+            {/* Project */}
 
             <span className="text-xs text-zinc-700">
               Project #{task.project_id}
             </span>
 
+            {/* Due date */}
+
             {task.due_date && (
+
               <span className="text-xs text-zinc-600">
                 Due{" "}
                 {new Date(
                   task.due_date,
                 ).toLocaleDateString()}
               </span>
+
             )}
+
           </div>
+
         </div>
 
-        {/* Task actions */}
-        <div className="absolute right-4 top-4">
+        {/* =================================================
+            TASK ACTIONS
+            ================================================= */}
+
+        <div
+          className="absolute right-4 top-4"
+          onClick={(event) =>
+            event.stopPropagation()
+          }
+        >
+
           <button
             type="button"
             aria-label={`Actions for ${task.title}`}
             aria-expanded={menuOpen}
-            onClick={onMenuToggle}
+            onClick={(event) => {
+              event.stopPropagation();
+
+              onMenuToggle();
+            }}
             className="
               flex
               h-8
@@ -804,6 +964,7 @@ function TaskCard({
           </button>
 
           {menuOpen && (
+
             <div
               className="
                 absolute
@@ -820,10 +981,20 @@ function TaskCard({
                 shadow-xl
                 shadow-black/40
               "
+              onClick={(event) =>
+                event.stopPropagation()
+              }
             >
+
+              {/* Edit */}
+
               <button
                 type="button"
-                onClick={onEdit}
+                onClick={(event) => {
+                  event.stopPropagation();
+
+                  onEdit();
+                }}
                 className="
                   flex
                   w-full
@@ -844,12 +1015,19 @@ function TaskCard({
                   size={15}
                   strokeWidth={1.8}
                 />
+
                 Edit task
               </button>
 
+              {/* Delete */}
+
               <button
                 type="button"
-                onClick={onDelete}
+                onClick={(event) => {
+                  event.stopPropagation();
+
+                  onDelete();
+                }}
                 className="
                   flex
                   w-full
@@ -869,12 +1047,17 @@ function TaskCard({
                   size={15}
                   strokeWidth={1.8}
                 />
+
                 Delete task
               </button>
+
             </div>
           )}
+
         </div>
+
       </div>
+
     </article>
   );
 }
@@ -911,6 +1094,7 @@ function DeleteTaskDialog({
       aria-modal="true"
       aria-labelledby="delete-task-title"
     >
+
       <div
         className="
           w-full
@@ -924,6 +1108,7 @@ function DeleteTaskDialog({
           shadow-black/50
         "
       >
+
         <div
           className="
             flex
@@ -957,6 +1142,7 @@ function DeleteTaskDialog({
         </p>
 
         <div className="mt-6 flex justify-end gap-3">
+
           <button
             type="button"
             disabled={loading}
@@ -1005,8 +1191,11 @@ function DeleteTaskDialog({
               ? "Deleting..."
               : "Delete task"}
           </button>
+
         </div>
+
       </div>
+
     </div>
   );
 }

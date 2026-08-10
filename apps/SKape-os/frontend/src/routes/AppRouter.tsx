@@ -8,6 +8,7 @@ import LoginPage from "../pages/LoginPage";
 import DashboardPage from "../pages/DashboardPage";
 import ProjectsPage from "../pages/ProjectsPage";
 import TasksPage from "../pages/TasksPage";
+import TaskDetailPage from "../pages/TaskDetailPage";
 
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -46,6 +47,17 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <TasksPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Task detail */}
+
+      <Route
+        path="/tasks/:taskId"
+        element={
+          <ProtectedRoute>
+            <TaskDetailPage />
           </ProtectedRoute>
         }
       />
