@@ -1,5 +1,12 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 
 import {
   CheckSquare,
@@ -30,6 +37,35 @@ import type {
 function TasksPage() {
   const navigate = useNavigate();
 
+  const [searchParams] =
+    useSearchParams();
+
+  /*
+   * =========================================================
+   * PROJECT CONTEXT
+   * =========================================================
+   */
+
+  const projectIdParam =
+    searchParams.get("project_id");
+
+  const parsedProjectId =
+    projectIdParam
+      ? Number(projectIdParam)
+      : undefined;
+
+  const projectId =
+    parsedProjectId &&
+    !Number.isNaN(parsedProjectId)
+      ? parsedProjectId
+      : undefined;
+
+  /*
+   * =========================================================
+   * TASK DATA
+   * =========================================================
+   */
+
   const {
     tasks,
     loading,
@@ -40,29 +76,67 @@ function TasksPage() {
     addTask,
     editTask,
     removeTask,
-  } = useTask();
+  } = useTask({
+    projectId,
+  });
 
-  const { projects } = useProjects();
+  const { projects } =
+    useProjects();
 
-  const [createModalOpen, setCreateModalOpen] =
-    useState(false);
+  /*
+   * =========================================================
+   * STATE
+   * =========================================================
+   */
 
-  const [editModalOpen, setEditModalOpen] =
-    useState(false);
+  const [
+    createModalOpen,
+    setCreateModalOpen,
+  ] = useState(false);
 
-  const [selectedTask, setSelectedTask] =
-    useState<Task | null>(null);
+  const [
+    editModalOpen,
+    setEditModalOpen,
+  ] = useState(false);
 
-  const [openMenuId, setOpenMenuId] =
-    useState<number | null>(null);
+  const [
+    selectedTask,
+    setSelectedTask,
+  ] = useState<Task | null>(null);
 
-  const [deleteTaskId, setDeleteTaskId] =
-    useState<number | null>(null);
+  const [
+    openMenuId,
+    setOpenMenuId,
+  ] = useState<number | null>(null);
 
-  const [search, setSearch] = useState("");
+  const [
+    deleteTaskId,
+    setDeleteTaskId,
+  ] = useState<number | null>(null);
 
-  const [statusFilter, setStatusFilter] =
-    useState<"all" | TaskStatus>("all");
+  const [search, setSearch] =
+    useState("");
+
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState<
+    "all" | TaskStatus
+  >("all");
+
+  /*
+   * =========================================================
+   * CURRENT PROJECT
+   * =========================================================
+   */
+
+  const currentProject =
+    projectId
+      ? projects.find(
+          (project) =>
+            project.id === projectId,
+        )
+      : undefined;
 
   /*
    * =========================================================
@@ -70,33 +144,40 @@ function TasksPage() {
    * =========================================================
    */
 
-  const filteredTasks = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const filteredTasks =
+    useMemo(() => {
+      const query =
+        search
+          .trim()
+          .toLowerCase();
 
-    return tasks.filter((task) => {
-      const matchesSearch =
-        !query ||
-        task.title
-          .toLowerCase()
-          .includes(query) ||
-        task.description
-          ?.toLowerCase()
-          .includes(query);
+      return tasks.filter(
+        (task) => {
+          const matchesSearch =
+            !query ||
+            task.title
+              .toLowerCase()
+              .includes(query) ||
+            task.description
+              ?.toLowerCase()
+              .includes(query);
 
-      const matchesStatus =
-        statusFilter === "all" ||
-        task.status === statusFilter;
+          const matchesStatus =
+            statusFilter === "all" ||
+            task.status ===
+              statusFilter;
 
-      return (
-        matchesSearch &&
-        matchesStatus
+          return (
+            matchesSearch &&
+            matchesStatus
+          );
+        },
       );
-    });
-  }, [
-    tasks,
-    search,
-    statusFilter,
-  ]);
+    }, [
+      tasks,
+      search,
+      statusFilter,
+    ]);
 
   /*
    * =========================================================
@@ -104,16 +185,21 @@ function TasksPage() {
    * =========================================================
    */
 
-  const handleCreateTask = async (
-    data: Parameters<typeof addTask>[0],
-  ) => {
-    const createdTask =
-      await addTask(data);
+  const handleCreateTask =
+    async (
+      data: Parameters<
+        typeof addTask
+      >[0],
+    ) => {
+      const createdTask =
+        await addTask(data);
 
-    if (createdTask) {
-      setCreateModalOpen(false);
-    }
-  };
+      if (createdTask) {
+        setCreateModalOpen(
+          false,
+        );
+      }
+    };
 
   /*
    * =========================================================
@@ -125,9 +211,7 @@ function TasksPage() {
     task: Task,
   ) => {
     setOpenMenuId(null);
-
     setSelectedTask(task);
-
     setEditModalOpen(true);
   };
 
@@ -143,7 +227,6 @@ function TasksPage() {
     }
 
     setEditModalOpen(false);
-
     setSelectedTask(null);
   };
 
@@ -153,22 +236,25 @@ function TasksPage() {
    * =========================================================
    */
 
-  const handleEditTask = async (
-    taskId: number,
-    data: UpdateTaskPayload,
-  ) => {
-    const updatedTask =
-      await editTask(
-        taskId,
-        data,
-      );
+  const handleEditTask =
+    async (
+      taskId: number,
+      data: UpdateTaskPayload,
+    ) => {
+      const updatedTask =
+        await editTask(
+          taskId,
+          data,
+        );
 
-    if (updatedTask) {
-      setEditModalOpen(false);
+      if (updatedTask) {
+        setEditModalOpen(
+          false,
+        );
 
-      setSelectedTask(null);
-    }
-  };
+        setSelectedTask(null);
+      }
+    };
 
   /*
    * =========================================================
@@ -180,7 +266,6 @@ function TasksPage() {
     task: Task,
   ) => {
     setOpenMenuId(null);
-
     setDeleteTaskId(task.id);
   };
 
@@ -190,13 +275,14 @@ function TasksPage() {
    * =========================================================
    */
 
-  const handleCancelDelete = () => {
-    if (deleting) {
-      return;
-    }
+  const handleCancelDelete =
+    () => {
+      if (deleting) {
+        return;
+      }
 
-    setDeleteTaskId(null);
-  };
+      setDeleteTaskId(null);
+    };
 
   /*
    * =========================================================
@@ -204,20 +290,23 @@ function TasksPage() {
    * =========================================================
    */
 
-  const handleConfirmDelete = async () => {
-    if (deleteTaskId === null) {
-      return;
-    }
+  const handleConfirmDelete =
+    async () => {
+      if (
+        deleteTaskId === null
+      ) {
+        return;
+      }
 
-    const success =
-      await removeTask(
-        deleteTaskId,
-      );
+      const success =
+        await removeTask(
+          deleteTaskId,
+        );
 
-    if (success) {
-      setDeleteTaskId(null);
-    }
-  };
+      if (success) {
+        setDeleteTaskId(null);
+      }
+    };
 
   return (
     <DashboardLayout>
@@ -228,9 +317,11 @@ function TasksPage() {
             ===================================================== */}
 
         <section className="border-b border-zinc-800/80 pb-8">
+
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
 
             <div>
+
               <div className="mb-3 flex items-center gap-2">
 
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -246,15 +337,19 @@ function TasksPage() {
               </h1>
 
               <p className="mt-2 text-sm text-zinc-500">
-                Manage and organize work
-                across your workspace.
+                {currentProject
+                  ? `Tasks for ${currentProject.name}.`
+                  : "Manage and organize work across your workspace."}
               </p>
+
             </div>
 
             <button
               type="button"
               onClick={() =>
-                setCreateModalOpen(true)
+                setCreateModalOpen(
+                  true,
+                )
               }
               className="
                 inline-flex
@@ -282,6 +377,7 @@ function TasksPage() {
             </button>
 
           </div>
+
         </section>
 
         {/* =====================================================
@@ -289,8 +385,6 @@ function TasksPage() {
             ===================================================== */}
 
         <section className="flex flex-col gap-3 sm:flex-row">
-
-          {/* Search */}
 
           <div className="relative min-w-0 flex-1">
 
@@ -341,8 +435,6 @@ function TasksPage() {
 
           </div>
 
-          {/* Status filter */}
-
           <div className="relative">
 
             <Filter
@@ -362,7 +454,8 @@ function TasksPage() {
               value={statusFilter}
               onChange={(event) =>
                 setStatusFilter(
-                  event.target.value as
+                  event.target
+                    .value as
                     | "all"
                     | TaskStatus,
                 )
@@ -406,7 +499,6 @@ function TasksPage() {
               <option value="cancelled">
                 Cancelled
               </option>
-
             </select>
 
             <ChevronDown
@@ -434,7 +526,9 @@ function TasksPage() {
           <div>
 
             <h2 className="text-sm font-semibold text-zinc-200">
-              All tasks
+              {currentProject
+                ? "Project tasks"
+                : "All tasks"}
             </h2>
 
             <p className="mt-1 text-xs text-zinc-600">
@@ -508,7 +602,6 @@ function TasksPage() {
 
               {filteredTasks.map(
                 (task) => (
-
                   <TaskCard
                     key={task.id}
                     task={task}
@@ -516,13 +609,11 @@ function TasksPage() {
                       openMenuId ===
                       task.id
                     }
-
                     onOpen={() =>
                       navigate(
                         `/tasks/${task.id}`,
                       )
                     }
-
                     onMenuToggle={() =>
                       setOpenMenuId(
                         (current) =>
@@ -532,20 +623,17 @@ function TasksPage() {
                             : task.id,
                       )
                     }
-
                     onEdit={() =>
                       handleOpenEdit(
                         task,
                       )
                     }
-
                     onDelete={() =>
                       handleRequestDelete(
                         task,
                       )
                     }
                   />
-
                 ),
               )}
 
@@ -558,7 +646,8 @@ function TasksPage() {
 
         {!loading &&
           !error &&
-          filteredTasks.length === 0 && (
+          filteredTasks.length ===
+            0 && (
 
             <div
               className="
@@ -604,18 +693,21 @@ function TasksPage() {
 
                 <h2 className="text-base font-semibold text-zinc-200">
                   {tasks.length === 0
-                    ? "No tasks yet"
+                    ? currentProject
+                      ? "No tasks in this project"
+                      : "No tasks yet"
                     : "No tasks found"}
                 </h2>
 
                 <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
                   {tasks.length === 0
-                    ? "Create your first task and start organizing work."
+                    ? currentProject
+                      ? "Create a task to start tracking work for this project."
+                      : "Create your first task and start organizing work."
                     : "Try changing your search or status filter."}
                 </p>
 
                 {tasks.length === 0 && (
-
                   <button
                     type="button"
                     onClick={() =>
@@ -643,7 +735,6 @@ function TasksPage() {
 
                     Create task
                   </button>
-
                 )}
 
               </div>
@@ -667,10 +758,17 @@ function TasksPage() {
             name: project.name,
           }),
         )}
-        onClose={() =>
-          setCreateModalOpen(false)
+        initialProjectId={
+          projectId
         }
-        onSubmit={handleCreateTask}
+        onClose={() =>
+          setCreateModalOpen(
+            false,
+          )
+        }
+        onSubmit={
+          handleCreateTask
+        }
       />
 
       {/* =====================================================
@@ -697,7 +795,6 @@ function TasksPage() {
           ===================================================== */}
 
       {deleteTaskId !== null && (
-
         <DeleteTaskDialog
           loading={deleting}
           onCancel={
@@ -707,7 +804,6 @@ function TasksPage() {
             handleConfirmDelete
           }
         />
-
       )}
 
     </DashboardLayout>
@@ -790,10 +886,6 @@ function TaskCard({
 
       <div className="flex items-start gap-4">
 
-        {/* =================================================
-            TASK ICON
-            ================================================= */}
-
         <div
           className="
             mt-0.5
@@ -820,10 +912,6 @@ function TaskCard({
             }
           />
         </div>
-
-        {/* =================================================
-            TASK CONTENT
-            ================================================= */}
 
         <div className="min-w-0 flex-1">
 
@@ -861,16 +949,12 @@ function TaskCard({
           </div>
 
           {task.description && (
-
             <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-zinc-500">
               {task.description}
             </p>
-
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-
-            {/* Priority */}
 
             <div className="flex items-center gap-2">
 
@@ -901,32 +985,22 @@ function TaskCard({
 
             </div>
 
-            {/* Project */}
-
             <span className="text-xs text-zinc-700">
               Project #{task.project_id}
             </span>
 
-            {/* Due date */}
-
             {task.due_date && (
-
               <span className="text-xs text-zinc-600">
                 Due{" "}
                 {new Date(
                   task.due_date,
                 ).toLocaleDateString()}
               </span>
-
             )}
 
           </div>
 
         </div>
-
-        {/* =================================================
-            TASK ACTIONS
-            ================================================= */}
 
         <div
           className="absolute right-4 top-4"
@@ -941,7 +1015,6 @@ function TaskCard({
             aria-expanded={menuOpen}
             onClick={(event) => {
               event.stopPropagation();
-
               onMenuToggle();
             }}
             className="
@@ -964,7 +1037,6 @@ function TaskCard({
           </button>
 
           {menuOpen && (
-
             <div
               className="
                 absolute
@@ -986,13 +1058,10 @@ function TaskCard({
               }
             >
 
-              {/* Edit */}
-
               <button
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-
                   onEdit();
                 }}
                 className="
@@ -1019,13 +1088,10 @@ function TaskCard({
                 Edit task
               </button>
 
-              {/* Delete */}
-
               <button
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-
                   onDelete();
                 }}
                 className="

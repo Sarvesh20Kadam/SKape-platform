@@ -21,8 +21,11 @@ type CreateTaskModalProps = {
   loading?: boolean;
   error?: string | null;
   projects: ProjectOption[];
+  initialProjectId?: number;
   onClose: () => void;
-  onSubmit: (data: CreateTaskPayload) => Promise<void> | void;
+  onSubmit: (
+    data: CreateTaskPayload,
+  ) => Promise<void> | void;
 };
 
 function CreateTaskModal({
@@ -30,119 +33,165 @@ function CreateTaskModal({
   loading = false,
   error = null,
   projects,
+  initialProjectId,
   onClose,
   onSubmit,
 }: CreateTaskModalProps) {
-  const titleRef = useRef<HTMLInputElement | null>(null);
+  const titleRef =
+    useRef<HTMLInputElement | null>(
+      null,
+    );
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [title, setTitle] =
+    useState("");
+
+  const [description, setDescription] =
+    useState("");
+
+  const [projectId, setProjectId] =
+    useState("");
+
   const [priority, setPriority] =
     useState<TaskPriority>("medium");
-  const [dueDate, setDueDate] = useState("");
+
+  const [dueDate, setDueDate] =
+    useState("");
 
   const [validationError, setValidationError] =
     useState<string | null>(null);
 
   /*
-   * Reset form whenever the modal opens.
+   * Reset form whenever modal opens.
+   * If a project was supplied, preselect it.
    */
   useEffect(() => {
-    if (!open) return;
-
+    if (!open) {
+      return;
+    }
+  
     setTitle("");
     setDescription("");
-    setProjectId("");
+  
+    setProjectId(
+      initialProjectId
+        ? String(initialProjectId)
+        : "",
+    );
+  
     setPriority("medium");
     setDueDate("");
     setValidationError(null);
-
+  
     const timer = window.setTimeout(() => {
       titleRef.current?.focus();
     }, 50);
-
+  
     return () => {
       window.clearTimeout(timer);
     };
-  }, [open]);
+  }, [
+    open,
+    initialProjectId,
+  ]);
+  
 
   /*
    * Escape closes the modal.
    */
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !loading) {
+    const handleKeyDown = (
+      event: KeyboardEvent,
+    ) => {
+      if (
+        event.key === "Escape" &&
+        !loading
+      ) {
         onClose();
       }
     };
 
     window.addEventListener(
       "keydown",
-      handleKeyDown
+      handleKeyDown,
     );
 
     return () => {
       window.removeEventListener(
         "keydown",
-        handleKeyDown
+        handleKeyDown,
       );
     };
-  }, [open, loading, onClose]);
+  }, [
+    open,
+    loading,
+    onClose,
+  ]);
 
   if (!open) {
     return null;
   }
 
   const handleSubmit = async (
-    event: React.FormEvent<HTMLFormElement>
+    event: React.FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
 
-    const trimmedTitle = title.trim();
+    const trimmedTitle =
+      title.trim();
+
     const trimmedDescription =
       description.trim();
 
-    /*
-     * Validation
-     */
     if (!trimmedTitle) {
       setValidationError(
-        "Task title is required."
+        "Task title is required.",
       );
+
       titleRef.current?.focus();
+
       return;
     }
 
     if (trimmedTitle.length < 2) {
       setValidationError(
-        "Task title must contain at least 2 characters."
+        "Task title must contain at least 2 characters.",
       );
+
       titleRef.current?.focus();
+
       return;
     }
 
     if (trimmedTitle.length > 200) {
       setValidationError(
-        "Task title cannot exceed 200 characters."
+        "Task title cannot exceed 200 characters.",
       );
+
       titleRef.current?.focus();
+
       return;
     }
 
-    if (trimmedDescription.length > 2000) {
+    if (
+      trimmedDescription.length >
+      2000
+    ) {
       setValidationError(
-        "Description cannot exceed 2000 characters."
+        "Description cannot exceed 2000 characters.",
       );
+
       return;
     }
 
     if (!projectId) {
       setValidationError(
-        "Please select a project."
+        "Please select a project.",
       );
+
       return;
     }
 
@@ -150,12 +199,20 @@ function CreateTaskModal({
 
     const payload: CreateTaskPayload = {
       title: trimmedTitle,
+
       description:
-        trimmedDescription || undefined,
+        trimmedDescription ||
+        undefined,
+
       priority,
-      project_id: Number(projectId),
+
+      project_id:
+        Number(projectId),
+
       due_date: dueDate
-        ? new Date(dueDate).toISOString()
+        ? new Date(
+            dueDate,
+          ).toISOString()
         : null,
     };
 
@@ -183,7 +240,6 @@ function CreateTaskModal({
       aria-modal="true"
       aria-labelledby="create-task-title"
     >
-      {/* Modal */}
       <div
         className="
           relative
@@ -198,10 +254,10 @@ function CreateTaskModal({
           shadow-black/50
         "
       >
-        {/* Accent */}
         <div className="h-px w-full bg-emerald-500/70" />
 
         {/* Header */}
+
         <div
           className="
             flex
@@ -214,6 +270,7 @@ function CreateTaskModal({
           "
         >
           <div className="flex items-start gap-4">
+
             <div
               className="
                 flex
@@ -249,9 +306,11 @@ function CreateTaskModal({
               </h2>
 
               <p className="mt-1 text-sm text-zinc-500">
-                Add a task to your workspace.
+                Add a task to your
+                workspace.
               </p>
             </div>
+
           </div>
 
           <button
@@ -275,9 +334,13 @@ function CreateTaskModal({
         </div>
 
         {/* Form */}
+
         <form onSubmit={handleSubmit}>
+
           <div className="space-y-5 px-6 py-6">
+
             {/* Title */}
+
             <div>
               <label
                 htmlFor="task-title"
@@ -302,8 +365,13 @@ function CreateTaskModal({
                 disabled={loading}
                 maxLength={200}
                 onChange={(event) => {
-                  setTitle(event.target.value);
-                  setValidationError(null);
+                  setTitle(
+                    event.target.value,
+                  );
+
+                  setValidationError(
+                    null,
+                  );
                 }}
                 placeholder="e.g. Design the landing page"
                 autoComplete="off"
@@ -337,6 +405,7 @@ function CreateTaskModal({
             </div>
 
             {/* Description */}
+
             <div>
               <label
                 htmlFor="task-description"
@@ -351,6 +420,7 @@ function CreateTaskModal({
                 "
               >
                 Description
+
                 <span
                   className="
                     ml-2
@@ -371,8 +441,13 @@ function CreateTaskModal({
                 maxLength={2000}
                 rows={3}
                 onChange={(event) => {
-                  setDescription(event.target.value);
-                  setValidationError(null);
+                  setDescription(
+                    event.target.value,
+                  );
+
+                  setValidationError(
+                    null,
+                  );
                 }}
                 placeholder="What needs to be done?"
                 className="
@@ -407,8 +482,11 @@ function CreateTaskModal({
             </div>
 
             {/* Project + Priority */}
+
             <div className="grid gap-4 sm:grid-cols-2">
+
               {/* Project */}
+
               <div>
                 <label
                   htmlFor="task-project"
@@ -430,8 +508,13 @@ function CreateTaskModal({
                   value={projectId}
                   disabled={loading}
                   onChange={(event) => {
-                    setProjectId(event.target.value);
-                    setValidationError(null);
+                    setProjectId(
+                      event.target.value,
+                    );
+
+                    setValidationError(
+                      null,
+                    );
                   }}
                   className="
                     h-11
@@ -457,18 +540,21 @@ function CreateTaskModal({
                     Select project
                   </option>
 
-                  {projects.map((project) => (
-                    <option
-                      key={project.id}
-                      value={project.id}
-                    >
-                      {project.name}
-                    </option>
-                  ))}
+                  {projects.map(
+                    (project) => (
+                      <option
+                        key={project.id}
+                        value={project.id}
+                      >
+                        {project.name}
+                      </option>
+                    ),
+                  )}
                 </select>
               </div>
 
               {/* Priority */}
+
               <div>
                 <label
                   htmlFor="task-priority"
@@ -491,10 +577,12 @@ function CreateTaskModal({
                   disabled={loading}
                   onChange={(event) => {
                     setPriority(
-                      event.target
-                        .value as TaskPriority
+                      event.target.value as TaskPriority,
                     );
-                    setValidationError(null);
+
+                    setValidationError(
+                      null,
+                    );
                   }}
                   className="
                     h-11
@@ -533,9 +621,11 @@ function CreateTaskModal({
                   </option>
                 </select>
               </div>
+
             </div>
 
             {/* Due date */}
+
             <div>
               <label
                 htmlFor="task-due-date"
@@ -550,6 +640,7 @@ function CreateTaskModal({
                 "
               >
                 Due date
+
                 <span
                   className="
                     ml-2
@@ -564,6 +655,7 @@ function CreateTaskModal({
               </label>
 
               <div className="relative">
+
                 <CalendarDays
                   size={16}
                   className="
@@ -582,8 +674,13 @@ function CreateTaskModal({
                   value={dueDate}
                   disabled={loading}
                   onChange={(event) => {
-                    setDueDate(event.target.value);
-                    setValidationError(null);
+                    setDueDate(
+                      event.target.value,
+                    );
+
+                    setValidationError(
+                      null,
+                    );
                   }}
                   className="
                     h-11
@@ -606,10 +703,12 @@ function CreateTaskModal({
                     disabled:opacity-50
                   "
                 />
+
               </div>
             </div>
 
             {/* Error */}
+
             {displayError && (
               <div
                 role="alert"
@@ -627,9 +726,11 @@ function CreateTaskModal({
                 {displayError}
               </div>
             )}
+
           </div>
 
           {/* Footer */}
+
           <div
             className="
               flex
@@ -700,6 +801,7 @@ function CreateTaskModal({
               )}
             </button>
           </div>
+
         </form>
       </div>
     </div>
