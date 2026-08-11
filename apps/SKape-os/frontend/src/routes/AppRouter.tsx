@@ -7,6 +7,7 @@ import {
 import LoginPage from "../pages/LoginPage";
 import DashboardPage from "../pages/DashboardPage";
 import ProjectsPage from "../pages/ProjectsPage";
+import ProjectDetailPage from "../pages/ProjectDetailPage";
 import TasksPage from "../pages/TasksPage";
 import TaskDetailPage from "../pages/TaskDetailPage";
 
@@ -15,14 +16,18 @@ import ProtectedRoute from "./ProtectedRoute";
 function AppRouter() {
   return (
     <Routes>
-      {/* Public routes */}
+      {/* =====================================================
+          PUBLIC ROUTES
+          ===================================================== */}
 
       <Route
         path="/login"
         element={<LoginPage />}
       />
 
-      {/* Protected routes */}
+      {/* =====================================================
+          PROTECTED ROUTES
+          ===================================================== */}
 
       <Route
         path="/dashboard"
@@ -32,6 +37,10 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
+
+      {/* =====================================================
+          PROJECTS
+          ===================================================== */}
 
       <Route
         path="/projects"
@@ -43,6 +52,19 @@ function AppRouter() {
       />
 
       <Route
+        path="/projects/:projectId"
+        element={
+          <ProtectedRoute>
+            <ProjectDetailPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* =====================================================
+          TASKS
+          ===================================================== */}
+
+      <Route
         path="/tasks"
         element={
           <ProtectedRoute>
@@ -50,8 +72,6 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
-
-      {/* Task detail */}
 
       <Route
         path="/tasks/:taskId"
@@ -62,7 +82,9 @@ function AppRouter() {
         }
       />
 
-      {/* Default route */}
+      {/* =====================================================
+          DEFAULT ROUTE
+          ===================================================== */}
 
       <Route
         path="/"
@@ -74,7 +96,9 @@ function AppRouter() {
         }
       />
 
-      {/* Unknown routes */}
+      {/* =====================================================
+          UNKNOWN ROUTES
+          ===================================================== */}
 
       <Route
         path="*"
