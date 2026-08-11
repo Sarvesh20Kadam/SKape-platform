@@ -8,7 +8,7 @@ import {
   Pencil,
 } from "lucide-react";
 
-import DashboardLayout from "../components/layout/DashboardLayout";
+import DashboardLayout from "../components/Layout/DashboardLayout";
 
 import EditTaskModal from "../features/task/components/EditTaskModal";
 import { useTaskDetail } from "../features/task/hooks/useTaskDetail";

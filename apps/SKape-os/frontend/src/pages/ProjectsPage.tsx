@@ -4,7 +4,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 
-import DashboardLayout from "../components/layout/DashboardLayout";
+import DashboardLayout from "../components/Layout/DashboardLayout";
 import CreateProjectModal from "../components/projects/CreateProjectModal";
 import { useProjects } from "../hooks/useProjects";
 

@@ -19,7 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import DashboardLayout from "../components/layout/DashboardLayout";
+import DashboardLayout from "../components/Layout/DashboardLayout";
 
 import CreateTaskModal from "../features/task/components/CreateTaskModal";
 import EditTaskModal from "../features/task/components/EditTaskModal";

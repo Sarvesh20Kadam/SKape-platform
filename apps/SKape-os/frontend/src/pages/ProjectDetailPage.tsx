@@ -1,43 +1,110 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import {
   ArrowLeft,
   CheckSquare,
   FolderKanban,
+  Pencil,
   Plus,
 } from "lucide-react";
+
 import {
   useNavigate,
   useParams,
 } from "react-router-dom";
 
-import DashboardLayout from "../components/layout/DashboardLayout";
+import DashboardLayout from "../components/Layout/DashboardLayout";
+
+import CreateProjectModal from "../components/projects/CreateProjectModal";
 
 import { getProjects } from "../features/projects/services/project.service";
 import { getTasks } from "../features/task/services/task.service";
 
-import type { Project } from "../features/projects/types/project.types";
-import type { Task } from "../features/task/types/task.types";
+import { useProjects } from "../hooks/useProjects";
+
+import type {
+  Project,
+  ProjectStatus,
+} from "../features/projects/types/project.types";
+
+import type {
+  Task,
+} from "../features/task/types/task.types";
 
 function ProjectDetailPage() {
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
-  const { projectId } = useParams<{
-    projectId: string;
-  }>();
+  const { projectId } =
+    useParams<{
+      projectId: string;
+    }>();
 
-  const numericProjectId = Number(projectId);
+  const numericProjectId =
+    Number(projectId);
 
-  const [project, setProject] =
-    useState<Project | null>(null);
+  /*
+   * =========================================================
+   * PROJECT STATE
+   * =========================================================
+   */
 
-  const [tasks, setTasks] =
+  const [
+    project,
+    setProject,
+  ] =
+    useState<Project | null>(
+      null,
+    );
+
+  const [
+    tasks,
+    setTasks,
+  ] =
     useState<Task[]>([]);
 
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  /*
+   * =========================================================
+   * EDIT STATE
+   * =========================================================
+   */
+
+  const [
+    editModalOpen,
+    setEditModalOpen,
+  ] =
+    useState(false);
+
+  /*
+   * =========================================================
+   * PROJECT HOOK
+   * =========================================================
+   */
+
+  const {
+    updateProject,
+    updating,
+    error: projectError,
+  } =
+    useProjects();
 
   /*
    * =========================================================
@@ -49,10 +116,16 @@ function ProjectDetailPage() {
     async function loadProject() {
       if (
         !numericProjectId ||
-        Number.isNaN(numericProjectId)
+        Number.isNaN(
+          numericProjectId,
+        )
       ) {
-        setError("Invalid project ID.");
+        setError(
+          "Invalid project ID.",
+        );
+
         setLoading(false);
+
         return;
       }
 
@@ -60,12 +133,6 @@ function ProjectDetailPage() {
         setLoading(true);
         setError(null);
 
-        /*
-         * We currently have getProjects()
-         * rather than getProject(id), so we
-         * find the project from the existing
-         * project collection.
-         */
         const projects =
           await getProjects();
 
@@ -79,9 +146,11 @@ function ProjectDetailPage() {
         if (!selectedProject) {
           setProject(null);
           setTasks([]);
+
           setError(
             "Project not found.",
           );
+
           return;
         }
 
@@ -89,16 +158,14 @@ function ProjectDetailPage() {
           selectedProject,
         );
 
-        /*
-         * Load only tasks belonging to
-         * this project.
-         */
         const projectTasks =
           await getTasks(
             numericProjectId,
           );
 
-        setTasks(projectTasks);
+        setTasks(
+          projectTasks,
+        );
       } catch (err) {
         console.error(
           "Failed to load project:",
@@ -114,7 +181,9 @@ function ProjectDetailPage() {
     }
 
     void loadProject();
-  }, [numericProjectId]);
+  }, [
+    numericProjectId,
+  ]);
 
   /*
    * =========================================================
@@ -122,31 +191,70 @@ function ProjectDetailPage() {
    * =========================================================
    */
 
-  const taskSummary = useMemo(() => {
-    const completed =
-      tasks.filter(
-        (task) =>
-          task.status ===
-          "completed",
-      ).length;
+  const taskSummary =
+    useMemo(() => {
+      const completed =
+        tasks.filter(
+          (task) =>
+            task.status ===
+            "completed",
+        ).length;
 
-    const inProgress =
-      tasks.filter(
-        (task) =>
-          task.status ===
-          "in_progress",
-      ).length;
+      const inProgress =
+        tasks.filter(
+          (task) =>
+            task.status ===
+            "in_progress",
+        ).length;
 
-    const remaining =
-      tasks.length - completed;
+      return {
+        total: tasks.length,
+        completed,
+        inProgress,
+      };
+    }, [tasks]);
 
-    return {
-      total: tasks.length,
-      completed,
-      inProgress,
-      remaining,
+  /*
+   * =========================================================
+   * EDIT PROJECT
+   * =========================================================
+   */
+
+  const handleEditProject =
+    async (data: {
+      name: string;
+      description: string;
+      status?: ProjectStatus;
+    }) => {
+      if (!project) {
+        return;
+      }
+
+      if (!data.status) {
+        return;
+      }
+
+      try {
+        const updatedProject =
+          await updateProject(
+            project.id,
+            {
+              name: data.name,
+              description:
+                data.description,
+              status: data.status,
+            },
+          );
+
+        setProject(
+          updatedProject,
+        );
+
+        setEditModalOpen(false);
+      } catch {
+        // Hook already stores the error.
+      }
     };
-  }, [tasks]);
 
   /*
    * =========================================================
@@ -176,7 +284,10 @@ function ProjectDetailPage() {
    * =========================================================
    */
 
-  if (error || !project) {
+  if (
+    error ||
+    !project
+  ) {
     return (
       <DashboardLayout>
         <div className="mx-auto w-full max-w-[1480px]">
@@ -184,7 +295,9 @@ function ProjectDetailPage() {
           <button
             type="button"
             onClick={() =>
-              navigate("/projects")
+              navigate(
+                "/projects",
+              )
             }
             className="
               inline-flex
@@ -197,6 +310,7 @@ function ProjectDetailPage() {
             "
           >
             <ArrowLeft size={16} />
+
             Back to projects
           </button>
 
@@ -216,9 +330,10 @@ function ProjectDetailPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-zinc-500">
-              This project may have been
-              deleted or you may not have
-              access to it.
+              This project may have
+              been deleted or you
+              may not have access
+              to it.
             </p>
           </div>
 
@@ -229,6 +344,7 @@ function ProjectDetailPage() {
 
   return (
     <DashboardLayout>
+
       <div className="mx-auto w-full max-w-[1480px] space-y-7">
 
         {/* =====================================================
@@ -240,7 +356,9 @@ function ProjectDetailPage() {
           <button
             type="button"
             onClick={() =>
-              navigate("/projects")
+              navigate(
+                "/projects",
+              )
             }
             className="
               inline-flex
@@ -257,32 +375,72 @@ function ProjectDetailPage() {
             Back to projects
           </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              navigate(
-                `/tasks?project_id=${project.id}`,
-              )
-            }
-            className="
-              inline-flex
-              h-10
-              items-center
-              gap-2
-              rounded-lg
-              bg-emerald-500
-              px-4
-              text-sm
-              font-semibold
-              text-zinc-950
-              transition-colors
-              hover:bg-emerald-400
-            "
-          >
-            <Plus size={16} />
+          <div className="flex items-center gap-2">
 
-            New task
-          </button>
+            {/* Edit */}
+
+            <button
+              type="button"
+              onClick={() =>
+                setEditModalOpen(
+                  true,
+                )
+              }
+              className="
+                inline-flex
+                h-10
+                items-center
+                gap-2
+                rounded-lg
+                border
+                border-zinc-800
+                px-4
+                text-sm
+                font-medium
+                text-zinc-400
+                transition-colors
+                hover:border-zinc-700
+                hover:bg-zinc-900
+                hover:text-zinc-200
+              "
+            >
+              <Pencil
+                size={15}
+              />
+
+              Edit
+            </button>
+
+            {/* New task */}
+
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  `/tasks?project_id=${project.id}`,
+                )
+              }
+              className="
+                inline-flex
+                h-10
+                items-center
+                gap-2
+                rounded-lg
+                bg-emerald-500
+                px-4
+                text-sm
+                font-semibold
+                text-zinc-950
+                transition-colors
+                hover:bg-emerald-400
+              "
+            >
+              <Plus size={16} />
+
+              New task
+            </button>
+
+          </div>
 
         </div>
 
@@ -354,13 +512,15 @@ function ProjectDetailPage() {
 
           </div>
 
-          {/* Project summary */}
+          {/* Summary */}
 
           <div className="grid border-t border-zinc-800/80 sm:grid-cols-3">
 
             <SummaryItem
               label="Tasks"
-              value={taskSummary.total}
+              value={
+                taskSummary.total
+              }
             />
 
             <SummaryItem
@@ -524,17 +684,19 @@ function ProjectDetailPage() {
 
             <div className="divide-y divide-zinc-800/70">
 
-              {tasks.map((task) => (
-                <ProjectTaskRow
-                  key={task.id}
-                  task={task}
-                  onOpen={() =>
-                    navigate(
-                      `/tasks/${task.id}`,
-                    )
-                  }
-                />
-              ))}
+              {tasks.map(
+                (task) => (
+                  <ProjectTaskRow
+                    key={task.id}
+                    task={task}
+                    onOpen={() =>
+                      navigate(
+                        `/tasks/${task.id}`,
+                      )
+                    }
+                  />
+                ),
+              )}
 
             </div>
 
@@ -543,6 +705,37 @@ function ProjectDetailPage() {
         </section>
 
       </div>
+
+      {/* =====================================================
+          EDIT PROJECT MODAL
+          ===================================================== */}
+
+      <CreateProjectModal
+        open={editModalOpen}
+        mode="edit"
+        loading={updating}
+        error={projectError}
+        initialName={
+          project.name
+        }
+        initialDescription={
+          project.description
+        }
+        initialStatus={
+          project.status
+        }
+        onClose={() => {
+          if (!updating) {
+            setEditModalOpen(
+              false,
+            );
+          }
+        }}
+        onSubmit={
+          handleEditProject
+        }
+      />
+
     </DashboardLayout>
   );
 }
