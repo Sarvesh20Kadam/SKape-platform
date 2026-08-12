@@ -1,6 +1,8 @@
 import api from "../../../api/client";
 
 import type {
+  AcceptInvitationPayload,
+  AcceptInvitationResponse,
   CreateInvitationPayload,
   Invitation,
   Organization,
@@ -42,9 +44,10 @@ export async function updateCurrentOrganization(
 export async function getOrganizationMembers(): Promise<
   OrganizationMember[]
 > {
-  const response = await api.get<OrganizationMember[]>(
-    "/organizations/members",
-  );
+  const response =
+    await api.get<OrganizationMember[]>(
+      "/organizations/members",
+    );
 
   return response.data;
 }
@@ -58,10 +61,34 @@ export async function getOrganizationMembers(): Promise<
 export async function createInvitation(
   data: CreateInvitationPayload,
 ): Promise<Invitation> {
-  const response = await api.post<Invitation>(
-    "/invitations/",
-    data,
-  );
+  const response =
+    await api.post<Invitation>(
+      "/invitations/",
+      data,
+    );
+
+  return response.data;
+}
+
+export async function getOrganizationInvitations(): Promise<
+  Invitation[]
+> {
+  const response =
+    await api.get<Invitation[]>(
+      "/invitations/",
+    );
+
+  return response.data;
+}
+
+export async function acceptInvitation(
+  data: AcceptInvitationPayload,
+): Promise<AcceptInvitationResponse> {
+  const response =
+    await api.post<AcceptInvitationResponse>(
+      "/invitations/accept",
+      data,
+    );
 
   return response.data;
 }

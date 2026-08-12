@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 
 import LoginPage from "../pages/LoginPage";
+import AcceptInvitationPage from "../pages/AcceptInvitationPage";
 import DashboardPage from "../pages/DashboardPage";
 import OrganizationPage from "../pages/OrganizationPage";
 import ProjectsPage from "../pages/ProjectsPage";
@@ -24,6 +25,11 @@ function AppRouter() {
       <Route
         path="/login"
         element={<LoginPage />}
+      />
+
+      <Route
+        path="/accept-invitation"
+        element={<AcceptInvitationPage />}
       />
 
       {/* =====================================================

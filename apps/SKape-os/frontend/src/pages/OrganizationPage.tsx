@@ -24,16 +24,17 @@ import type {
 } from "../features/organization/types/organization.types";
 
 function OrganizationPage() {
-  const {
-    organization,
-    members,
-    loading,
-    updating,
-    inviting,
-    error,
-    updateOrganization,
-    createInvitation,
-  } = useOrganization();
+    const {
+        organization,
+        members,
+        invitations,
+        loading,
+        updating,
+        inviting,
+        error,
+        updateOrganization,
+        createInvitation,
+      } = useOrganization();
 
   const [editing, setEditing] =
     useState(false);
@@ -714,13 +715,251 @@ function OrganizationPage() {
 
             </div>
           )}
-        </section>
+                </section>
 
+{/* =======================================================
+    PENDING INVITATIONS
+    ======================================================= */}
+
+<section
+  className="
+    overflow-hidden
+    rounded-2xl
+    border
+    border-zinc-800
+    bg-zinc-950
+  "
+>
+  <div
+    className="
+      flex
+      flex-col
+      gap-4
+      border-b
+      border-zinc-800/80
+      px-6
+      py-5
+      sm:flex-row
+      sm:items-center
+      sm:justify-between
+      sm:px-8
+    "
+  >
+    <div>
+      <div className="flex items-center gap-3">
+        <div
+          className="
+            flex
+            h-9
+            w-9
+            items-center
+            justify-center
+            rounded-xl
+            border
+            border-zinc-800
+            bg-zinc-900
+          "
+        >
+          <Mail
+            size={16}
+            className="text-zinc-500"
+          />
+        </div>
+
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-200">
+            Pending invitations
+          </h2>
+
+          <p className="mt-1 text-xs text-zinc-600">
+            Invitations waiting to be accepted.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <span
+      className="
+        w-fit
+        rounded-full
+        border
+        border-zinc-800
+        bg-zinc-900
+        px-2.5
+        py-1
+        text-[10px]
+        font-semibold
+        uppercase
+        tracking-[0.08em]
+        text-zinc-500
+      "
+    >
+      {invitations.length}{" "}
+      {invitations.length === 1
+        ? "invitation"
+        : "invitations"}
+    </span>
+  </div>
+
+  {invitations.length === 0 ? (
+    <div
+      className="
+        flex
+        min-h-[160px]
+        flex-col
+        items-center
+        justify-center
+        px-6
+        text-center
+      "
+    >
+      <div
+        className="
+          flex
+          h-10
+          w-10
+          items-center
+          justify-center
+          rounded-xl
+          border
+          border-zinc-800
+          bg-zinc-900
+        "
+      >
+        <Mail
+          size={17}
+          className="text-zinc-600"
+        />
       </div>
 
-      {/* =======================================================
-          INVITE MODAL
-          ======================================================= */}
+      <h3 className="mt-4 text-sm font-semibold text-zinc-300">
+        No pending invitations
+      </h3>
+
+      <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-600">
+        Invitations you send will appear here
+        until they are accepted.
+      </p>
+    </div>
+  ) : (
+    <div className="divide-y divide-zinc-800/70">
+      {invitations.map((invitation) => {
+        const expiresAt =
+          new Date(
+            invitation.expires_at,
+          );
+
+        const isExpired =
+          expiresAt.getTime() <
+          Date.now();
+
+        return (
+          <div
+            key={invitation.id}
+            className="
+              flex
+              flex-col
+              gap-4
+              px-6
+              py-4
+              sm:flex-row
+              sm:items-center
+              sm:px-8
+            "
+          >
+            <div
+              className="
+                flex
+                h-10
+                w-10
+                shrink-0
+                items-center
+                justify-center
+                rounded-xl
+                border
+                border-zinc-800
+                bg-zinc-900
+                text-xs
+                font-semibold
+                uppercase
+                text-zinc-500
+              "
+            >
+              <Mail size={16} />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-zinc-200">
+                {invitation.email}
+              </p>
+
+              <p className="mt-1 text-xs text-zinc-600">
+                Sent{" "}
+                {new Date(
+                  invitation.created_at,
+                ).toLocaleDateString()}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span
+                className="
+                  rounded-full
+                  border
+                  border-zinc-800
+                  bg-zinc-900
+                  px-2.5
+                  py-1
+                  text-[10px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.08em]
+                  text-zinc-500
+                "
+              >
+                {invitation.role}
+              </span>
+
+              <span
+                className={`
+                  rounded-full
+                  border
+                  px-2.5
+                  py-1
+                  text-[10px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.08em]
+                  ${
+                    isExpired
+                      ? "border-red-500/20 bg-red-500/5 text-red-400"
+                      : "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                  }
+                `}
+              >
+                {isExpired
+                  ? "Expired"
+                  : "Pending"}
+              </span>
+            </div>
+
+            <div className="text-xs text-zinc-600 sm:min-w-[130px] sm:text-right">
+              {isExpired
+                ? "Invitation expired"
+                : `Expires ${expiresAt.toLocaleDateString()}`}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</section>
+
+</div>
+
+{/* =======================================================
+  INVITE MODAL
+  ======================================================= */}
 
       {inviteOpen && (
         <div

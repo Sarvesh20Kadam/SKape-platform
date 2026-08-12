@@ -1,196 +1,203 @@
 import {
-    useCallback,
-    useEffect,
-    useState,
-  } from "react";
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
-  import {
-    createInvitation as createInvitationRequest,
-    getCurrentOrganization,
-    getOrganizationMembers,
-    updateCurrentOrganization,
-  } from "../services/organization.service";
+import {
+  createInvitation as createInvitationRequest,
+  getCurrentOrganization,
+  getOrganizationInvitations,
+  getOrganizationMembers,
+  updateCurrentOrganization,
+} from "../services/organization.service";
 
-  import type {
-    CreateInvitationPayload,
-    Organization,
-    OrganizationMember,
-    UpdateOrganizationPayload,
-  } from "../types/organization.types";
+import type {
+  CreateInvitationPayload,
+  Invitation,
+  Organization,
+  OrganizationMember,
+  UpdateOrganizationPayload,
+} from "../types/organization.types";
 
-  type UseOrganizationResult = {
-    organization: Organization | null;
-    members: OrganizationMember[];
+type UseOrganizationResult = {
+  organization: Organization | null;
+  members: OrganizationMember[];
+  invitations: Invitation[];
 
-    loading: boolean;
-    updating: boolean;
-    inviting: boolean;
+  loading: boolean;
+  updating: boolean;
+  inviting: boolean;
 
-    error: string | null;
+  error: string | null;
 
-    refresh: () => Promise<void>;
+  refresh: () => Promise<void>;
 
-    updateOrganization: (
+  updateOrganization: (
+    data: UpdateOrganizationPayload,
+  ) => Promise<Organization>;
+
+  createInvitation: (
+    data: CreateInvitationPayload,
+  ) => Promise<void>;
+};
+
+export function useOrganization(): UseOrganizationResult {
+  const [organization, setOrganization] =
+    useState<Organization | null>(null);
+
+  const [members, setMembers] =
+    useState<OrganizationMember[]>([]);
+
+  const [invitations, setInvitations] =
+    useState<Invitation[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [updating, setUpdating] =
+    useState(false);
+
+  const [inviting, setInviting] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  /*
+   * =========================================================
+   * LOAD ORGANIZATION
+   * =========================================================
+   */
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [
+        organizationData,
+        membersData,
+        invitationsData,
+      ] = await Promise.all([
+        getCurrentOrganization(),
+        getOrganizationMembers(),
+        getOrganizationInvitations(),
+      ]);
+
+      setOrganization(organizationData);
+      setMembers(membersData);
+      setInvitations(invitationsData);
+    } catch (err) {
+      console.error(
+        "Failed to load organization:",
+        err,
+      );
+
+      setError(
+        "Unable to load organization information. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  /*
+   * =========================================================
+   * UPDATE ORGANIZATION
+   * =========================================================
+   */
+
+  const updateOrganization = useCallback(
+    async (
       data: UpdateOrganizationPayload,
-    ) => Promise<Organization>;
-
-    createInvitation: (
-      data: CreateInvitationPayload,
-    ) => Promise<void>;
-  };
-
-  export function useOrganization(): UseOrganizationResult {
-    const [organization, setOrganization] =
-      useState<Organization | null>(null);
-
-    const [members, setMembers] =
-      useState<OrganizationMember[]>([]);
-
-    const [loading, setLoading] =
-      useState(true);
-
-    const [updating, setUpdating] =
-      useState(false);
-
-    const [inviting, setInviting] =
-      useState(false);
-
-    const [error, setError] =
-      useState<string | null>(null);
-
-    /*
-     * =========================================================
-     * LOAD ORGANIZATION
-     * =========================================================
-     */
-
-    const refresh = useCallback(async () => {
+    ): Promise<Organization> => {
       try {
-        setLoading(true);
+        setUpdating(true);
         setError(null);
 
-        const [
-          organizationData,
-          membersData,
-        ] = await Promise.all([
-          getCurrentOrganization(),
-          getOrganizationMembers(),
-        ]);
+        const updated =
+          await updateCurrentOrganization(data);
 
-        setOrganization(
-          organizationData,
-        );
+        setOrganization(updated);
 
-        setMembers(
-          membersData,
-        );
+        return updated;
       } catch (err) {
         console.error(
-          "Failed to load organization:",
+          "Failed to update organization:",
           err,
         );
 
         setError(
-          "Unable to load organization information. Please try again.",
+          "Unable to update organization. Please try again.",
         );
+
+        throw err;
       } finally {
-        setLoading(false);
+        setUpdating(false);
       }
-    }, []);
+    },
+    [],
+  );
 
-    useEffect(() => {
-      void refresh();
-    }, [refresh]);
+  /*
+   * =========================================================
+   * CREATE INVITATION
+   * =========================================================
+   */
 
-    /*
-     * =========================================================
-     * UPDATE ORGANIZATION
-     * =========================================================
-     */
+  const createInvitation = useCallback(
+    async (
+      data: CreateInvitationPayload,
+    ): Promise<void> => {
+      try {
+        setInviting(true);
+        setError(null);
 
-    const updateOrganization = useCallback(
-      async (
-        data: UpdateOrganizationPayload,
-      ): Promise<Organization> => {
-        try {
-          setUpdating(true);
-          setError(null);
+        const created =
+          await createInvitationRequest(data);
 
-          const updated =
-            await updateCurrentOrganization(
-              data,
-            );
+        setInvitations(
+          (current) => [
+            created,
+            ...current,
+          ],
+        );
+      } catch (err) {
+        console.error(
+          "Failed to create invitation:",
+          err,
+        );
 
-          setOrganization(
-            updated,
-          );
+        setError(
+          "Unable to create invitation. Please try again.",
+        );
 
-          return updated;
-        } catch (err) {
-          console.error(
-            "Failed to update organization:",
-            err,
-          );
+        throw err;
+      } finally {
+        setInviting(false);
+      }
+    },
+    [],
+  );
 
-          setError(
-            "Unable to update organization. Please try again.",
-          );
+  return {
+    organization,
+    members,
+    invitations,
 
-          throw err;
-        } finally {
-          setUpdating(false);
-        }
-      },
-      [],
-    );
+    loading,
+    updating,
+    inviting,
 
-    /*
-     * =========================================================
-     * CREATE INVITATION
-     * =========================================================
-     */
+    error,
 
-    const createInvitation = useCallback(
-      async (
-        data: CreateInvitationPayload,
-      ): Promise<void> => {
-        try {
-          setInviting(true);
-          setError(null);
-
-          await createInvitationRequest(
-            data,
-          );
-        } catch (err) {
-          console.error(
-            "Failed to create invitation:",
-            err,
-          );
-
-          setError(
-            "Unable to create invitation. Please try again.",
-          );
-
-          throw err;
-        } finally {
-          setInviting(false);
-        }
-      },
-      [],
-    );
-
-    return {
-      organization,
-      members,
-
-      loading,
-      updating,
-      inviting,
-
-      error,
-
-      refresh,
-      updateOrganization,
-      createInvitation,
-    };
-  }
+    refresh,
+    updateOrganization,
+    createInvitation,
+  };
+}
