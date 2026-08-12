@@ -64,6 +64,22 @@ def get_pending_invitation_by_email(
         .first()
     )
 
+def get_organization_invitations(
+    db: Session,
+    organization_id: int,
+):
+    return (
+        db.query(Invitation)
+        .filter(
+            Invitation.organization_id == organization_id,
+            Invitation.status == "pending",
+        )
+        .order_by(
+            Invitation.created_at.desc()
+        )
+        .all()
+    )
+
 
 def get_invitation_by_token(
     db: Session,
@@ -76,7 +92,20 @@ def get_invitation_by_token(
         )
         .first()
     )
-
+def get_organization_invitations(
+    db: Session,
+    organization_id: int,
+):
+    return (
+        db.query(Invitation)
+        .filter(
+            Invitation.organization_id == organization_id,
+        )
+        .order_by(
+            Invitation.created_at.desc()
+        )
+        .all()
+    )
 
 def create_user_from_invitation(
     db: Session,

@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.permissions import require_role
+from typing import List
 
 from app.crud.invitation import (
     create_invitation,
     create_user_from_invitation,
     get_invitation_by_token,
     get_pending_invitation_by_email,
+    get_organization_invitations,
 )
 
 from app.schemas.invitation import (
@@ -64,6 +66,24 @@ def create_new_invitation(
             detail=str(exc),
         )
 
+@router.get(
+    "/",
+    response_model=List[InvitationResponse],
+)
+def get_invitations(
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+        )
+    ),
+):
+    return get_organization_invitations(
+        db,
+        current_user.organization_id,
+    )
 
 @router.post("/accept")
 def accept_invitation(
