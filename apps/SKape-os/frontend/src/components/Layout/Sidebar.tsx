@@ -41,7 +41,7 @@ const workspaceNavigation: NavigationItem[] = [
 const managementNavigation: NavigationItem[] = [
   {
     label: "Organization",
-    path: "/organizations",
+    path: "/organization",
     icon: Building2,
   },
   {

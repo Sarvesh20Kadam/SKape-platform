@@ -6,6 +6,7 @@ import {
 
 import LoginPage from "../pages/LoginPage";
 import DashboardPage from "../pages/DashboardPage";
+import OrganizationPage from "../pages/OrganizationPage";
 import ProjectsPage from "../pages/ProjectsPage";
 import ProjectDetailPage from "../pages/ProjectDetailPage";
 import TasksPage from "../pages/TasksPage";
@@ -34,6 +35,19 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* =====================================================
+          ORGANIZATION
+          ===================================================== */}
+
+      <Route
+        path="/organization"
+        element={
+          <ProtectedRoute>
+            <OrganizationPage />
           </ProtectedRoute>
         }
       />

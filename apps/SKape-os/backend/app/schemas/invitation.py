@@ -23,3 +23,5 @@ class InvitationResponse(BaseModel):
 
 class InvitationAccept(BaseModel):
     token: str
+    name: str
+    password: str

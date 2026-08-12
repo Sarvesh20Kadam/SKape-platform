@@ -8,7 +8,6 @@ from app.permissions import require_role
 
 from app.crud.organization import (
     create_organization,
-    get_organizations,
     get_organization_by_id,
     update_organization,
     delete_organization,
@@ -23,34 +22,86 @@ from app.schemas.organization import (
 
 from app.schemas.user import UserResponse
 
+
 router = APIRouter(
     prefix="/organizations",
-    tags=["Organizations"]
+    tags=["Organizations"],
 )
 
 
-@router.post("/", response_model=OrganizationResponse)
+@router.post(
+    "/",
+    response_model=OrganizationResponse,
+)
 def create(
     organization: OrganizationCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner"))
+    current_user=Depends(require_role("owner")),
 ):
-    return create_organization(db, organization)
+    return create_organization(
+        db,
+        organization,
+    )
 
 
-@router.get("/", response_model=List[OrganizationResponse])
-def get_all(
+@router.get(
+    "/current",
+    response_model=OrganizationResponse,
+)
+def get_current_organization(
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner", "admin", "manager"))
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee",
+        )
+    ),
 ):
-    return get_organizations(db)
+    organization = get_organization_by_id(
+        db,
+        current_user.organization_id,
+    )
+
+    if organization is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found",
+        )
+
+    return organization
 
 
-# IMPORTANT:
-# This route must be ABOVE "/{organization_id}"
+@router.put(
+    "/current",
+    response_model=OrganizationResponse,
+)
+def update_current_organization(
+    organization: OrganizationUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role("owner", "admin")
+    ),
+):
+    updated = update_organization(
+        db,
+        current_user.organization_id,
+        organization,
+    )
+
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found",
+        )
+
+    return updated
+
+
 @router.get(
     "/members",
-    response_model=List[UserResponse]
+    response_model=List[UserResponse],
 )
 def get_members(
     db: Session = Depends(get_db),
@@ -59,70 +110,78 @@ def get_members(
             "owner",
             "admin",
             "manager",
-            "employee"
+            "employee",
         )
-    )
+    ),
 ):
     return get_organization_members(
         db,
-        current_user.organization_id
+        current_user.organization_id,
     )
 
 
-@router.get("/{organization_id}", response_model=OrganizationResponse)
+@router.get(
+    "/{organization_id}",
+    response_model=OrganizationResponse,
+)
 def get_one(
     organization_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner", "admin", "manager"))
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+        )
+    ),
 ):
+    # Users can only access their own organization.
+    if organization_id != current_user.organization_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this organization.",
+        )
+
     organization = get_organization_by_id(
         db,
-        organization_id
+        organization_id,
     )
 
     if organization is None:
-        raise NotFoundException("Organization")
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found",
+        )
 
     return organization
 
 
-@router.put("/{organization_id}", response_model=OrganizationResponse)
-def update(
-    organization_id: int,
-    organization: OrganizationUpdate,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner", "admin"))
-):
-    updated = update_organization(
-        db,
-        organization_id,
-        organization
-    )
-
-    if updated is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Organization not found"
-        )
-
-    return updated
-
-
-@router.delete("/{organization_id}", response_model=OrganizationResponse)
+@router.delete(
+    "/{organization_id}",
+    response_model=OrganizationResponse,
+)
 def delete(
     organization_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner"))
+    current_user=Depends(
+        require_role("owner")
+    ),
 ):
+    if organization_id != current_user.organization_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this organization.",
+        )
+
     deleted = delete_organization(
         db,
-        organization_id
+        organization_id,
     )
 
     if deleted is None:
         raise HTTPException(
             status_code=404,
-            detail="Organization not found"
+            detail="Organization not found",
         )
 
     return deleted
