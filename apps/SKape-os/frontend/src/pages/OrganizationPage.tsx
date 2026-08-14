@@ -34,6 +34,7 @@ function OrganizationPage() {
     error,
     updateOrganization,
     createInvitation,
+    updateMemberRole,
   } = useOrganization();
 
   const [editing, setEditing] = useState(false);
@@ -637,8 +638,12 @@ function OrganizationPage() {
           ) : (
             <div className="divide-y divide-zinc-800/70">
               {members.map((member) => (
-                <MemberRow key={member.id} member={member} />
-              ))}
+               <MemberRow
+                   key={member.id}
+                       member={member}
+                    onRoleChange={updateMemberRole}
+  />
+                  ))}
             </div>
           )}
         </section>
@@ -1213,88 +1218,199 @@ function InfoItem({ icon, label, value }: InfoItemProps) {
    MEMBER ROW
    ========================================================= */
 
-type MemberRowProps = {
-  member: {
-    id: number;
-    name: string;
-    email: string;
-    role: string;
-    is_active: boolean;
+   type MemberRowProps = {
+    member: {
+      id: number;
+      name: string;
+      email: string;
+      role: string;
+      is_active: boolean;
+    };
+  
+    onRoleChange: (
+      userId: number,
+      role: string,
+    ) => Promise<unknown>;
   };
-};
-
-function MemberRow({ member }: MemberRowProps) {
-  const initials =
-    member.name
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join("") || "?";
-
-  return (
-    <div className="flex items-center gap-4 px-6 py-4 sm:px-8">
-      <div
-        className="
-          flex
-          h-10
-          w-10
-          shrink-0
-          items-center
-          justify-center
-          rounded-xl
-          border
-          border-zinc-800
-          bg-zinc-900
-          text-xs
-          font-semibold
-          text-zinc-400
-        "
-      >
-        {initials}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-200">
-          {member.name}
-        </p>
-
-        <p className="mt-1 truncate text-xs text-zinc-600">{member.email}</p>
-      </div>
-
-      <div className="hidden items-center gap-2 sm:flex">
-        <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
-          {member.role}
-        </span>
-
-        <span
-          className={`
-            rounded-full
+  
+  function MemberRow({
+    member,
+    onRoleChange,
+  }: MemberRowProps) {
+    const [savingRole, setSavingRole] =
+      useState(false);
+  
+    const [roleError, setRoleError] =
+      useState(false);
+  
+    const initials =
+      member.name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((part) =>
+          part.charAt(0).toUpperCase(),
+        )
+        .join("") || "?";
+  
+    const handleRoleChange = async (
+      role: string,
+    ) => {
+      if (role === member.role) {
+        return;
+      }
+  
+      try {
+        setSavingRole(true);
+        setRoleError(false);
+  
+        await onRoleChange(
+          member.id,
+          role,
+        );
+      } catch {
+        setRoleError(true);
+      } finally {
+        setSavingRole(false);
+      }
+    };
+  
+    return (
+      <div className="flex items-center gap-4 px-6 py-4 sm:px-8">
+  
+        {/* Avatar */}
+        <div
+          className="
+            flex
+            h-10
+            w-10
+            shrink-0
+            items-center
+            justify-center
+            rounded-xl
             border
-            px-2.5
-            py-1
-            text-[10px]
+            border-zinc-800
+            bg-zinc-900
+            text-xs
             font-semibold
-            uppercase
-            tracking-[0.08em]
-            ${
-              member.is_active
-                ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
-                : "border-zinc-800 text-zinc-600"
-            }
-          `}
+            text-zinc-400
+          "
         >
-          {member.is_active ? "Active" : "Inactive"}
-        </span>
+          {initials}
+        </div>
+  
+        {/* Member information */}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-zinc-200">
+            {member.name}
+          </p>
+  
+          <p className="mt-1 truncate text-xs text-zinc-600">
+            {member.email}
+          </p>
+        </div>
+  
+        {/* Role + status */}
+        <div className="hidden items-center gap-2 sm:flex">
+  
+          <select
+            value={member.role}
+            disabled={
+              savingRole ||
+              member.role === "owner"
+            }
+            onChange={(event) => {
+              void handleRoleChange(
+                event.target.value,
+              );
+            }}
+            aria-label={`Change role for ${member.name}`}
+            className="
+              h-8
+              rounded-lg
+              border
+              border-zinc-800
+              bg-zinc-900
+              px-2.5
+              text-[10px]
+              font-semibold
+              uppercase
+              tracking-[0.08em]
+              text-zinc-400
+              outline-none
+              transition
+              hover:border-zinc-700
+              hover:text-zinc-200
+              focus:border-emerald-500/50
+              focus:ring-2
+              focus:ring-emerald-500/10
+              disabled:cursor-not-allowed
+              disabled:opacity-50
+            "
+          >
+            <option value="employee">
+              Employee
+            </option>
+  
+            <option value="manager">
+              Manager
+            </option>
+  
+            <option value="admin">
+              Admin
+            </option>
+  
+            {member.role === "owner" && (
+              <option value="owner">
+                Owner
+              </option>
+            )}
+          </select>
+  
+          <span
+            className={`
+              rounded-full
+              border
+              px-2.5
+              py-1
+              text-[10px]
+              font-semibold
+              uppercase
+              tracking-[0.08em]
+              ${
+                member.is_active
+                  ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                  : "border-zinc-800 text-zinc-600"
+              }
+            `}
+          >
+            {member.is_active
+              ? "Active"
+              : "Inactive"}
+          </span>
+  
+        </div>
+  
+        {/* Permission indicator */}
+        <ShieldCheck
+          size={16}
+          className={
+            member.is_active
+              ? "text-emerald-500/60"
+              : "text-zinc-700"
+          }
+        />
+  
+        {/* Error */}
+        {roleError && (
+          <span className="text-[10px] text-red-400">
+            Failed
+          </span>
+        )}
+  
       </div>
-
-      <ShieldCheck
-        size={16}
-        className={member.is_active ? "text-emerald-500/60" : "text-zinc-700"}
-      />
-    </div>
-  );
-}
+    );
+  }
 
 /* =========================================================
    ERROR

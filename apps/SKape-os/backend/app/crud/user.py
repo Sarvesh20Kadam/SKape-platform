@@ -86,3 +86,51 @@ def authenticate_user(
         return None
 
     return user
+
+    ALLOWED_USER_ROLES = {
+    "admin",
+    "manager",
+    "employee",
+}
+
+ALLOWED_USER_ROLES = {
+    "admin",
+    "manager",
+    "employee",
+}
+
+
+def update_user_role(
+    db: Session,
+    user: User,
+    role: str,
+):
+    if role not in ALLOWED_USER_ROLES:
+        raise ValueError(
+            "Invalid user role."
+        )
+
+    user.role = role
+
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+def update_user_role(
+    db: Session,
+    user: User,
+    role: str,
+):
+    if role not in ALLOWED_USER_ROLES:
+        raise ValueError(
+            "Invalid user role."
+        )
+
+    user.role = role
+
+    db.commit()
+    db.refresh(user)
+
+    return user

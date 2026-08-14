@@ -10,6 +10,7 @@ import {
   getOrganizationInvitations,
   getOrganizationMembers,
   updateCurrentOrganization,
+  updateMemberRole as updateMemberRoleRequest,
 } from "../services/organization.service";
 
 import type {
@@ -40,6 +41,11 @@ type UseOrganizationResult = {
   createInvitation: (
     data: CreateInvitationPayload,
   ) => Promise<void>;
+
+  updateMemberRole: (
+    userId: number,
+    role: string,
+  ) => Promise<OrganizationMember>;
 };
 
 export function useOrganization(): UseOrganizationResult {
@@ -185,19 +191,59 @@ export function useOrganization(): UseOrganizationResult {
     [],
   );
 
+
+  const updateMemberRole = useCallback(
+    async (
+      userId: number,
+      role: string,
+    ): Promise<OrganizationMember> => {
+      try {
+        setError(null);
+  
+        const updated =
+          await updateMemberRoleRequest(
+            userId,
+            role,
+          );
+  
+        setMembers((current) =>
+          current.map((member) =>
+            member.id === userId
+              ? updated
+              : member,
+          ),
+        );
+  
+        return updated;
+      } catch (err) {
+        console.error(
+          "Failed to update member role:",
+          err,
+        );
+  
+        setError(
+          "Unable to update member role. Please try again.",
+        );
+  
+        throw err;
+      }
+    },
+    [],
+  );
   return {
     organization,
     members,
     invitations,
-
+  
     loading,
     updating,
     inviting,
-
+  
     error,
-
+  
     refresh,
     updateOrganization,
     createInvitation,
+    updateMemberRole,
   };
 }

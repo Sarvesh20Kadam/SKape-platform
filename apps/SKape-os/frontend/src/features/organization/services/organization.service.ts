@@ -100,3 +100,17 @@ export async function acceptInvitation(
 
   return response.data;
 }
+
+export async function updateMemberRole(
+  userId: number,
+  role: string,
+): Promise<OrganizationMember> {
+  const response = await api.patch<OrganizationMember>(
+    `/users/${userId}/role`,
+    {
+      role,
+    },
+  );
+
+  return response.data;
+}
