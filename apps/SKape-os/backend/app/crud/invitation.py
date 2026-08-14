@@ -22,9 +22,7 @@ def create_invitation(
     organization_id: int,
 ):
     if invitation.role not in ALLOWED_INVITATION_ROLES:
-        raise ValueError(
-            "Invalid invitation role."
-        )
+        raise ValueError("Invalid invitation role.")
 
     token = secrets.token_urlsafe(32)
 
@@ -64,6 +62,7 @@ def get_pending_invitation_by_email(
         .first()
     )
 
+
 def get_organization_invitations(
     db: Session,
     organization_id: int,
@@ -71,9 +70,9 @@ def get_organization_invitations(
     return (
         db.query(Invitation)
         .filter(
-            Invitation.organization_id == organization_id,
-            Invitation.status == "pending",
-        )
+                   Invitation.organization_id == organization_id,
+                   Invitation.status == "pending",
+        )         
         .order_by(
             Invitation.created_at.desc()
         )
@@ -92,20 +91,7 @@ def get_invitation_by_token(
         )
         .first()
     )
-def get_organization_invitations(
-    db: Session,
-    organization_id: int,
-):
-    return (
-        db.query(Invitation)
-        .filter(
-            Invitation.organization_id == organization_id,
-        )
-        .order_by(
-            Invitation.created_at.desc()
-        )
-        .all()
-    )
+
 
 def create_user_from_invitation(
     db: Session,
