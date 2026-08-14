@@ -14,6 +14,7 @@ class InvitationResponse(BaseModel):
     role: str
     status: str
     organization_id: int
+    token: str
     expires_at: datetime
     created_at: datetime
 
