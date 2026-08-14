@@ -24,38 +24,32 @@ import type {
 } from "../features/organization/types/organization.types";
 
 function OrganizationPage() {
-    const {
-        organization,
-        members,
-        invitations,
-        loading,
-        updating,
-        inviting,
-        error,
-        updateOrganization,
-        createInvitation,
-      } = useOrganization();
+  const {
+    organization,
+    members,
+    invitations,
+    loading,
+    updating,
+    inviting,
+    error,
+    updateOrganization,
+    createInvitation,
+  } = useOrganization();
 
-  const [editing, setEditing] =
-    useState(false);
+  const [editing, setEditing] = useState(false);
 
-  const [inviteOpen, setInviteOpen] =
-    useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
-  const [form, setForm] =
-    useState<UpdateOrganizationPayload>({});
+  const [form, setForm] = useState<UpdateOrganizationPayload>({});
 
-  const [inviteForm, setInviteForm] =
-    useState<CreateInvitationPayload>({
-      email: "",
-      role: "employee",
-    });
+  const [inviteForm, setInviteForm] = useState<CreateInvitationPayload>({
+    email: "",
+    role: "employee",
+  });
 
-  const [actionError, setActionError] =
-    useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const [inviteSuccess, setInviteSuccess] =
-    useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState(false);
 
   /*
    * =========================================================
@@ -93,9 +87,7 @@ function OrganizationPage() {
 
   const handleSave = async () => {
     if (!form.name?.trim()) {
-      setActionError(
-        "Organization name is required.",
-      );
+      setActionError("Organization name is required.");
       return;
     }
 
@@ -105,23 +97,16 @@ function OrganizationPage() {
       await updateOrganization({
         ...form,
         name: form.name.trim(),
-        email:
-          form.email?.trim() || null,
-        phone:
-          form.phone?.trim() || null,
-        website:
-          form.website?.trim() || null,
-        industry:
-          form.industry?.trim() || null,
-        address:
-          form.address?.trim() || null,
+        email: form.email?.trim() || null,
+        phone: form.phone?.trim() || null,
+        website: form.website?.trim() || null,
+        industry: form.industry?.trim() || null,
+        address: form.address?.trim() || null,
       });
 
       setEditing(false);
     } catch {
-      setActionError(
-        "Unable to update organization. Please try again.",
-      );
+      setActionError("Unable to update organization. Please try again.");
     }
   };
 
@@ -153,13 +138,10 @@ function OrganizationPage() {
   };
 
   const handleInvite = async () => {
-    const email =
-      inviteForm.email.trim();
+    const email = inviteForm.email.trim();
 
     if (!email) {
-      setActionError(
-        "Email address is required.",
-      );
+      setActionError("Email address is required.");
       return;
     }
 
@@ -179,9 +161,7 @@ function OrganizationPage() {
         role: "employee",
       });
     } catch {
-      setActionError(
-        "Unable to create invitation. Please try again.",
-      );
+      setActionError("Unable to create invitation. Please try again.");
     }
   };
 
@@ -221,8 +201,7 @@ function OrganizationPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-zinc-500">
-              {error ||
-                "Organization information could not be loaded."}
+              {error || "Organization information could not be loaded."}
             </p>
           </div>
         </div>
@@ -233,7 +212,6 @@ function OrganizationPage() {
   return (
     <DashboardLayout>
       <div className="mx-auto w-full max-w-[1480px] space-y-7">
-
         {/* =====================================================
             PAGE HEADER
             ===================================================== */}
@@ -249,8 +227,7 @@ function OrganizationPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-zinc-500">
-              Manage your organization and
-              workspace members.
+              Manage your organization and workspace members.
             </p>
           </div>
 
@@ -312,12 +289,10 @@ function OrganizationPage() {
             ===================================================== */}
 
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-
           {/* Profile header */}
 
           <div className="border-b border-zinc-800/80 px-6 py-7 sm:px-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-
               <div
                 className="
                   flex
@@ -378,9 +353,7 @@ function OrganizationPage() {
                       `}
                     />
 
-                    {organization.is_active
-                      ? "Active"
-                      : "Inactive"}
+                    {organization.is_active ? "Active" : "Inactive"}
                   </span>
                 </div>
 
@@ -406,10 +379,8 @@ function OrganizationPage() {
           {/* Details */}
 
           <div className="px-6 py-7 sm:px-8">
-
             {editing ? (
               <div className="space-y-5">
-
                 <OrganizationInput
                   label="Organization name"
                   value={form.name || ""}
@@ -423,7 +394,6 @@ function OrganizationPage() {
                 />
 
                 <div className="grid gap-5 md:grid-cols-2">
-
                   <OrganizationInput
                     label="Email"
                     type="email"
@@ -472,7 +442,6 @@ function OrganizationPage() {
                     }
                     disabled={updating}
                   />
-
                 </div>
 
                 <OrganizationInput
@@ -487,14 +456,9 @@ function OrganizationPage() {
                   disabled={updating}
                 />
 
-                {actionError && (
-                  <ErrorMessage
-                    message={actionError}
-                  />
-                )}
+                {actionError && <ErrorMessage message={actionError} />}
 
                 <div className="flex justify-end gap-3 border-t border-zinc-800/80 pt-5">
-
                   <button
                     type="button"
                     onClick={cancelEditing}
@@ -542,58 +506,43 @@ function OrganizationPage() {
                   >
                     <Save size={15} />
 
-                    {updating
-                      ? "Saving..."
-                      : "Save changes"}
+                    {updating ? "Saving..." : "Save changes"}
                   </button>
-
                 </div>
               </div>
             ) : (
               <div className="grid gap-x-10 gap-y-7 md:grid-cols-2">
-
                 <InfoItem
                   icon={<Mail size={15} />}
                   label="Email"
-                  value={
-                    organization.email
-                  }
+                  value={organization.email}
                 />
 
                 <InfoItem
                   icon={<Phone size={15} />}
                   label="Phone"
-                  value={
-                    organization.phone
-                  }
+                  value={organization.phone}
                 />
 
                 <InfoItem
                   icon={<Globe size={15} />}
                   label="Website"
-                  value={
-                    organization.website
-                  }
+                  value={organization.website}
                 />
 
                 <InfoItem
                   icon={<Building2 size={15} />}
                   label="Industry"
-                  value={
-                    organization.industry
-                  }
+                  value={organization.industry}
                 />
 
                 <div className="md:col-span-2">
                   <InfoItem
                     icon={<MapPin size={15} />}
                     label="Address"
-                    value={
-                      organization.address
-                    }
+                    value={organization.address}
                   />
                 </div>
-
               </div>
             )}
           </div>
@@ -604,11 +553,8 @@ function OrganizationPage() {
             ===================================================== */}
 
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-
           <div className="flex items-center justify-between border-b border-zinc-800/80 px-6 py-5 sm:px-8">
-
             <div className="flex items-center gap-3">
-
               <div
                 className="
                   flex
@@ -622,26 +568,17 @@ function OrganizationPage() {
                   bg-zinc-900
                 "
               >
-                <Users
-                  size={16}
-                  className="text-emerald-400"
-                />
+                <Users size={16} className="text-emerald-400" />
               </div>
 
               <div>
-                <h2 className="text-sm font-semibold text-zinc-200">
-                  Members
-                </h2>
+                <h2 className="text-sm font-semibold text-zinc-200">Members</h2>
 
                 <p className="mt-1 text-xs text-zinc-600">
-                  {members.length}{" "}
-                  {members.length === 1
-                    ? "member"
-                    : "members"}{" "}
+                  {members.length} {members.length === 1 ? "member" : "members"}{" "}
                   in your organization
                 </p>
               </div>
-
             </div>
 
             <button
@@ -673,7 +610,6 @@ function OrganizationPage() {
 
           {members.length === 0 ? (
             <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
-
               <div
                 className="
                   flex
@@ -687,10 +623,7 @@ function OrganizationPage() {
                   bg-zinc-900
                 "
               >
-                <Users
-                  size={18}
-                  className="text-zinc-600"
-                />
+                <Users size={18} className="text-zinc-600" />
               </div>
 
               <h3 className="mt-4 text-sm font-semibold text-zinc-200">
@@ -698,40 +631,33 @@ function OrganizationPage() {
               </h3>
 
               <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-600">
-                Invite people to start
-                building your workspace.
+                Invite people to start building your workspace.
               </p>
-
             </div>
           ) : (
             <div className="divide-y divide-zinc-800/70">
-
               {members.map((member) => (
-                <MemberRow
-                  key={member.id}
-                  member={member}
-                />
+                <MemberRow key={member.id} member={member} />
               ))}
-
             </div>
           )}
-                </section>
+        </section>
 
-{/* =======================================================
+        {/* =======================================================
     PENDING INVITATIONS
     ======================================================= */}
 
-<section
-  className="
+        <section
+          className="
     overflow-hidden
     rounded-2xl
     border
     border-zinc-800
     bg-zinc-950
   "
->
-  <div
-    className="
+        >
+          <div
+            className="
       flex
       flex-col
       gap-4
@@ -744,11 +670,11 @@ function OrganizationPage() {
       sm:justify-between
       sm:px-8
     "
-  >
-    <div>
-      <div className="flex items-center gap-3">
-        <div
-          className="
+          >
+            <div>
+              <div className="flex items-center gap-3">
+                <div
+                  className="
             flex
             h-9
             w-9
@@ -759,27 +685,24 @@ function OrganizationPage() {
             border-zinc-800
             bg-zinc-900
           "
-        >
-          <Mail
-            size={16}
-            className="text-zinc-500"
-          />
-        </div>
+                >
+                  <Mail size={16} className="text-zinc-500" />
+                </div>
 
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-200">
-            Pending invitations
-          </h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-200">
+                    Pending invitations
+                  </h2>
 
-          <p className="mt-1 text-xs text-zinc-600">
-            Invitations waiting to be accepted.
-          </p>
-        </div>
-      </div>
-    </div>
+                  <p className="mt-1 text-xs text-zinc-600">
+                    Invitations waiting to be accepted.
+                  </p>
+                </div>
+              </div>
+            </div>
 
-    <span
-      className="
+            <span
+              className="
         w-fit
         rounded-full
         border
@@ -793,17 +716,15 @@ function OrganizationPage() {
         tracking-[0.08em]
         text-zinc-500
       "
-    >
-      {invitations.length}{" "}
-      {invitations.length === 1
-        ? "invitation"
-        : "invitations"}
-    </span>
-  </div>
+            >
+              {invitations.length}{" "}
+              {invitations.length === 1 ? "invitation" : "invitations"}
+            </span>
+          </div>
 
-  {invitations.length === 0 ? (
-    <div
-      className="
+          {invitations.length === 0 ? (
+            <div
+              className="
         flex
         min-h-[160px]
         flex-col
@@ -812,9 +733,9 @@ function OrganizationPage() {
         px-6
         text-center
       "
-    >
-      <div
-        className="
+            >
+              <div
+                className="
           flex
           h-10
           w-10
@@ -825,38 +746,29 @@ function OrganizationPage() {
           border-zinc-800
           bg-zinc-900
         "
-      >
-        <Mail
-          size={17}
-          className="text-zinc-600"
-        />
-      </div>
+              >
+                <Mail size={17} className="text-zinc-600" />
+              </div>
 
-      <h3 className="mt-4 text-sm font-semibold text-zinc-300">
-        No pending invitations
-      </h3>
+              <h3 className="mt-4 text-sm font-semibold text-zinc-300">
+                No pending invitations
+              </h3>
 
-      <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-600">
-        Invitations you send will appear here
-        until they are accepted.
-      </p>
-    </div>
-  ) : (
-    <div className="divide-y divide-zinc-800/70">
-      {invitations.map((invitation) => {
-        const expiresAt =
-          new Date(
-            invitation.expires_at,
-          );
+              <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-600">
+                Invitations you send will appear here until they are accepted.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-800/70">
+              {invitations.map((invitation) => {
+                const expiresAt = new Date(invitation.expires_at);
 
-        const isExpired =
-          expiresAt.getTime() <
-          Date.now();
+                const isExpired = expiresAt.getTime() < Date.now();
 
-        return (
-          <div
-            key={invitation.id}
-            className="
+                return (
+                  <div
+                    key={invitation.id}
+                    className="
               flex
               flex-col
               gap-4
@@ -866,9 +778,9 @@ function OrganizationPage() {
               sm:items-center
               sm:px-8
             "
-          >
-            <div
-              className="
+                  >
+                    <div
+                      className="
                 flex
                 h-10
                 w-10
@@ -884,26 +796,24 @@ function OrganizationPage() {
                 uppercase
                 text-zinc-500
               "
-            >
-              <Mail size={16} />
-            </div>
+                    >
+                      <Mail size={16} />
+                    </div>
 
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-zinc-200">
-                {invitation.email}
-              </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-zinc-200">
+                        {invitation.email}
+                      </p>
 
-              <p className="mt-1 text-xs text-zinc-600">
-                Sent{" "}
-                {new Date(
-                  invitation.created_at,
-                ).toLocaleDateString()}
-              </p>
-            </div>
+                      <p className="mt-1 text-xs text-zinc-600">
+                        Sent{" "}
+                        {new Date(invitation.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
 
-            <div className="flex items-center gap-2">
-              <span
-                className="
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="
                   rounded-full
                   border
                   border-zinc-800
@@ -916,12 +826,12 @@ function OrganizationPage() {
                   tracking-[0.08em]
                   text-zinc-500
                 "
-              >
-                {invitation.role}
-              </span>
+                      >
+                        {invitation.role}
+                      </span>
 
-              <span
-                className={`
+                      <span
+                        className={`
                   rounded-full
                   border
                   px-2.5
@@ -936,28 +846,25 @@ function OrganizationPage() {
                       : "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
                   }
                 `}
-              >
-                {isExpired
-                  ? "Expired"
-                  : "Pending"}
-              </span>
+                      >
+                        {isExpired ? "Expired" : "Pending"}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-zinc-600 sm:min-w-[130px] sm:text-right">
+                      {isExpired
+                        ? "Invitation expired"
+                        : `Expires ${expiresAt.toLocaleDateString()}`}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+          )}
+        </section>
+      </div>
 
-            <div className="text-xs text-zinc-600 sm:min-w-[130px] sm:text-right">
-              {isExpired
-                ? "Invitation expired"
-                : `Expires ${expiresAt.toLocaleDateString()}`}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  )}
-</section>
-
-</div>
-
-{/* =======================================================
+      {/* =======================================================
   INVITE MODAL
   ======================================================= */}
 
@@ -987,13 +894,10 @@ function OrganizationPage() {
           />
 
           <div className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/50">
-
             <div className="h-px w-full bg-gradient-to-r from-transparent via-emerald-500/70 to-transparent" />
 
             <div className="flex items-start justify-between border-b border-zinc-800/80 px-6 py-5">
-
               <div className="flex items-start gap-4">
-
                 <div
                   className="
                     flex
@@ -1007,10 +911,7 @@ function OrganizationPage() {
                     bg-zinc-900
                   "
                 >
-                  <UserPlus
-                    size={18}
-                    className="text-emerald-400"
-                  />
+                  <UserPlus size={18} className="text-emerald-400" />
                 </div>
 
                 <div>
@@ -1025,7 +926,6 @@ function OrganizationPage() {
                     Add someone to your organization.
                   </p>
                 </div>
-
               </div>
 
               <button
@@ -1044,22 +944,18 @@ function OrganizationPage() {
               >
                 <X size={18} />
               </button>
-
             </div>
 
             <div className="space-y-5 px-6 py-6">
-
               <OrganizationInput
                 label="Email address"
                 type="email"
                 value={inviteForm.email}
                 onChange={(value) => {
-                  setInviteForm(
-                    (current) => ({
-                      ...current,
-                      email: value,
-                    }),
-                  );
+                  setInviteForm((current) => ({
+                    ...current,
+                    email: value,
+                  }));
                   setActionError(null);
                   setInviteSuccess(false);
                 }}
@@ -1088,12 +984,10 @@ function OrganizationPage() {
                   value={inviteForm.role}
                   disabled={inviting}
                   onChange={(event) => {
-                    setInviteForm(
-                      (current) => ({
-                        ...current,
-                        role: event.target.value,
-                      }),
-                    );
+                    setInviteForm((current) => ({
+                      ...current,
+                      role: event.target.value,
+                    }));
                     setActionError(null);
                   }}
                   className="
@@ -1115,25 +1009,15 @@ function OrganizationPage() {
                     disabled:opacity-50
                   "
                 >
-                  <option value="employee">
-                    Employee
-                  </option>
+                  <option value="employee">Employee</option>
 
-                  <option value="manager">
-                    Manager
-                  </option>
+                  <option value="manager">Manager</option>
 
-                  <option value="admin">
-                    Admin
-                  </option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
 
-              {actionError && (
-                <ErrorMessage
-                  message={actionError}
-                />
-              )}
+              {actionError && <ErrorMessage message={actionError} />}
 
               {inviteSuccess && (
                 <div
@@ -1153,15 +1037,12 @@ function OrganizationPage() {
                   "
                 >
                   <Check size={16} />
-
                   Invitation created successfully.
                 </div>
               )}
-
             </div>
 
             <div className="flex items-center justify-end gap-3 border-t border-zinc-800/80 px-6 py-4">
-
               <button
                 type="button"
                 disabled={inviting}
@@ -1205,13 +1086,9 @@ function OrganizationPage() {
               >
                 <UserPlus size={15} />
 
-                {inviting
-                  ? "Sending..."
-                  : "Send invitation"}
+                {inviting ? "Sending..." : "Send invitation"}
               </button>
-
             </div>
-
           </div>
         </div>
       )}
@@ -1261,9 +1138,7 @@ function OrganizationInput({
         value={value}
         disabled={disabled}
         placeholder={placeholder}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
+        onChange={(event) => onChange(event.target.value)}
         className="
           h-11
           w-full
@@ -1299,14 +1174,9 @@ type InfoItemProps = {
   value: string | null;
 };
 
-function InfoItem({
-  icon,
-  label,
-  value,
-}: InfoItemProps) {
+function InfoItem({ icon, label, value }: InfoItemProps) {
   return (
     <div className="flex min-w-0 items-start gap-3">
-
       <div
         className="
           mt-0.5
@@ -1335,7 +1205,6 @@ function InfoItem({
           {value || "Not provided"}
         </p>
       </div>
-
     </div>
   );
 }
@@ -1354,23 +1223,17 @@ type MemberRowProps = {
   };
 };
 
-function MemberRow({
-  member,
-}: MemberRowProps) {
+function MemberRow({ member }: MemberRowProps) {
   const initials =
     member.name
       .trim()
       .split(/\s+/)
       .slice(0, 2)
-      .map(
-        (part) =>
-          part.charAt(0).toUpperCase(),
-      )
+      .map((part) => part.charAt(0).toUpperCase())
       .join("") || "?";
 
   return (
     <div className="flex items-center gap-4 px-6 py-4 sm:px-8">
-
       <div
         className="
           flex
@@ -1392,19 +1255,14 @@ function MemberRow({
       </div>
 
       <div className="min-w-0 flex-1">
-
         <p className="truncate text-sm font-medium text-zinc-200">
           {member.name}
         </p>
 
-        <p className="mt-1 truncate text-xs text-zinc-600">
-          {member.email}
-        </p>
-
+        <p className="mt-1 truncate text-xs text-zinc-600">{member.email}</p>
       </div>
 
       <div className="hidden items-center gap-2 sm:flex">
-
         <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
           {member.role}
         </span>
@@ -1426,22 +1284,14 @@ function MemberRow({
             }
           `}
         >
-          {member.is_active
-            ? "Active"
-            : "Inactive"}
+          {member.is_active ? "Active" : "Inactive"}
         </span>
-
       </div>
 
       <ShieldCheck
         size={16}
-        className={
-          member.is_active
-            ? "text-emerald-500/60"
-            : "text-zinc-700"
-        }
+        className={member.is_active ? "text-emerald-500/60" : "text-zinc-700"}
       />
-
     </div>
   );
 }
@@ -1450,11 +1300,7 @@ function MemberRow({
    ERROR
    ========================================================= */
 
-function ErrorMessage({
-  message,
-}: {
-  message: string;
-}) {
+function ErrorMessage({ message }: { message: string }) {
   return (
     <div
       role="alert"
