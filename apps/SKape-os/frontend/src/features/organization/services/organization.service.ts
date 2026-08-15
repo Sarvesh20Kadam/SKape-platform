@@ -119,6 +119,29 @@ export async function acceptInvitation(
   return response.data;
 }
 
+export async function acceptExistingInvitation(
+  token: string,
+): Promise<{
+  message: string;
+  user_id: number;
+  organization_id: number;
+  role: string;
+}> {
+  const response = await api.post<{
+    message: string;
+    user_id: number;
+    organization_id: number;
+    role: string;
+  }>(
+    "/invitations/accept-existing",
+    {
+      token,
+    },
+  );
+
+  return response.data;
+}
+
 /*
  * =========================================================
  * MEMBER ROLE MANAGEMENT

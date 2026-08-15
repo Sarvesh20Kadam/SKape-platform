@@ -301,11 +301,15 @@ function AcceptInvitationPage() {
               </span>
 
               <Link
-                to="/login"
-                className="text-zinc-400 transition hover:text-zinc-200"
-              >
-                Sign in
-              </Link>
+                  to={
+                       token
+                       ? `/login?token=${encodeURIComponent(token)}`
+                       : "/login"
+                      }
+                    className="text-zinc-400 transition hover:text-zinc-200"
+                  >
+               Sign in
+             </Link>
             </div>
           </form>
         </div>
