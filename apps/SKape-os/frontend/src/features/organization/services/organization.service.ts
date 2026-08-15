@@ -76,6 +76,24 @@ export async function createInvitation(
   return response.data;
 }
 
+export async function revokeInvitation(
+  invitationId: number,
+): Promise<void> {
+  await api.delete(
+    `/invitations/${invitationId}`,
+  );
+}
+
+export async function resendInvitation(
+  invitationId: number,
+): Promise<Invitation> {
+  const response = await api.post<Invitation>(
+    `/invitations/${invitationId}/resend`,
+  );
+
+  return response.data;
+}
+
 export async function acceptInvitation(
   data: {
     token: string;
@@ -100,6 +118,12 @@ export async function acceptInvitation(
 
   return response.data;
 }
+
+/*
+ * =========================================================
+ * MEMBER ROLE MANAGEMENT
+ * =========================================================
+ */
 
 export async function updateMemberRole(
   userId: number,

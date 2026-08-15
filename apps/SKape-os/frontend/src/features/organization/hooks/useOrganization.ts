@@ -11,6 +11,8 @@ import {
   getOrganizationMembers,
   updateCurrentOrganization,
   updateMemberRole as updateMemberRoleRequest,
+  revokeInvitation as revokeInvitationRequest,
+  resendInvitation as resendInvitationRequest,
 } from "../services/organization.service";
 
 import type {
@@ -29,6 +31,8 @@ type UseOrganizationResult = {
   loading: boolean;
   updating: boolean;
   inviting: boolean;
+  revoking: boolean;
+  resending: boolean;
 
   error: string | null;
 
@@ -46,6 +50,14 @@ type UseOrganizationResult = {
     userId: number,
     role: string,
   ) => Promise<OrganizationMember>;
+
+  revokeInvitation: (
+    invitationId: number,
+  ) => Promise<void>;
+
+  resendInvitation: (
+    invitationId: number,
+  ) => Promise<Invitation>;
 };
 
 export function useOrganization(): UseOrganizationResult {
@@ -65,6 +77,12 @@ export function useOrganization(): UseOrganizationResult {
     useState(false);
 
   const [inviting, setInviting] =
+    useState(false);
+
+  const [revoking, setRevoking] =
+    useState(false);
+
+  const [resending, setResending] =
     useState(false);
 
   const [error, setError] =
@@ -191,6 +209,11 @@ export function useOrganization(): UseOrganizationResult {
     [],
   );
 
+  /*
+   * =========================================================
+   * UPDATE MEMBER ROLE
+   * =========================================================
+   */
 
   const updateMemberRole = useCallback(
     async (
@@ -199,13 +222,13 @@ export function useOrganization(): UseOrganizationResult {
     ): Promise<OrganizationMember> => {
       try {
         setError(null);
-  
+
         const updated =
           await updateMemberRoleRequest(
             userId,
             role,
           );
-  
+
         setMembers((current) =>
           current.map((member) =>
             member.id === userId
@@ -213,37 +236,119 @@ export function useOrganization(): UseOrganizationResult {
               : member,
           ),
         );
-  
+
         return updated;
       } catch (err) {
         console.error(
           "Failed to update member role:",
           err,
         );
-  
+
         setError(
           "Unable to update member role. Please try again.",
         );
-  
+
         throw err;
       }
     },
     [],
   );
+
+  /*
+   * =========================================================
+   * REVOKE INVITATION
+   * =========================================================
+   */
+
+  const revokeInvitation = useCallback(
+    async (
+      invitationId: number,
+    ): Promise<void> => {
+      try {
+        setRevoking(true);
+        setError(null);
+
+        await revokeInvitationRequest(
+          invitationId,
+        );
+
+        await refresh();
+      } catch (err) {
+        console.error(
+          "Failed to revoke invitation:",
+          err,
+        );
+
+        setError(
+          "Unable to revoke invitation. Please try again.",
+        );
+
+        throw err;
+      } finally {
+        setRevoking(false);
+      }
+    },
+    [refresh],
+  );
+
+  /*
+   * =========================================================
+   * RESEND INVITATION
+   * =========================================================
+   */
+
+  const resendInvitation = useCallback(
+    async (
+      invitationId: number,
+    ): Promise<Invitation> => {
+      try {
+        setResending(true);
+        setError(null);
+
+        const updated =
+          await resendInvitationRequest(
+            invitationId,
+          );
+
+        await refresh();
+
+        return updated;
+      } catch (err) {
+        console.error(
+          "Failed to resend invitation:",
+          err,
+        );
+
+        setError(
+          "Unable to resend invitation. Please try again.",
+        );
+
+        throw err;
+      } finally {
+        setResending(false);
+      }
+    },
+    [refresh],
+  );
+
   return {
     organization,
     members,
     invitations,
-  
+
     loading,
     updating,
     inviting,
-  
+    revoking,
+    resending,
+
     error,
-  
+
     refresh,
     updateOrganization,
     createInvitation,
     updateMemberRole,
+    revokeInvitation,
+    resendInvitation,
   };
 }

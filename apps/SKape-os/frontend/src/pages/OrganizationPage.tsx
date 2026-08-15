@@ -2,13 +2,16 @@ import { useState } from "react";
 import {
   Building2,
   Check,
+  Copy,
   Edit3,
   Globe,
   Mail,
   MapPin,
   Phone,
+  RefreshCw,
   Save,
   ShieldCheck,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -31,26 +34,39 @@ function OrganizationPage() {
     loading,
     updating,
     inviting,
+    revoking,
+    resending,
     error,
     updateOrganization,
     createInvitation,
     updateMemberRole,
+    revokeInvitation,
+    resendInvitation,
   } = useOrganization();
 
   const [editing, setEditing] = useState(false);
-
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const [form, setForm] = useState<UpdateOrganizationPayload>({});
+  const [form, setForm] =
+    useState<UpdateOrganizationPayload>({});
 
-  const [inviteForm, setInviteForm] = useState<CreateInvitationPayload>({
-    email: "",
-    role: "employee",
-  });
+  const [inviteForm, setInviteForm] =
+    useState<CreateInvitationPayload>({
+      email: "",
+      role: "employee",
+    });
 
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] =
+    useState<string | null>(null);
 
-  const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [inviteSuccess, setInviteSuccess] =
+    useState(false);
+
+  const [copiedInvitationId, setCopiedInvitationId] =
+    useState<number | null>(null);
+
+  const [processingInvitationId, setProcessingInvitationId] =
+    useState<number | null>(null);
 
   /*
    * =========================================================
@@ -88,7 +104,9 @@ function OrganizationPage() {
 
   const handleSave = async () => {
     if (!form.name?.trim()) {
-      setActionError("Organization name is required.");
+      setActionError(
+        "Organization name is required.",
+      );
       return;
     }
 
@@ -107,13 +125,15 @@ function OrganizationPage() {
 
       setEditing(false);
     } catch {
-      setActionError("Unable to update organization. Please try again.");
+      setActionError(
+        "Unable to update organization. Please try again.",
+      );
     }
   };
 
   /*
    * =========================================================
-   * INVITATION
+   * INVITATION CREATION
    * =========================================================
    */
 
@@ -142,7 +162,9 @@ function OrganizationPage() {
     const email = inviteForm.email.trim();
 
     if (!email) {
-      setActionError("Email address is required.");
+      setActionError(
+        "Email address is required.",
+      );
       return;
     }
 
@@ -162,7 +184,108 @@ function OrganizationPage() {
         role: "employee",
       });
     } catch {
-      setActionError("Unable to create invitation. Please try again.");
+      setActionError(
+        "Unable to create invitation. Please try again.",
+      );
+    }
+  };
+
+  /*
+   * =========================================================
+   * INVITATION MANAGEMENT
+   * =========================================================
+   */
+
+  const handleCopyInvitationLink = async (
+    invitationId: number,
+    token: string,
+  ) => {
+    try {
+      setActionError(null);
+
+      const inviteUrl =
+        `${window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
+
+      await navigator.clipboard.writeText(
+        inviteUrl,
+      );
+
+      setCopiedInvitationId(invitationId);
+
+      window.setTimeout(() => {
+        setCopiedInvitationId((current) =>
+          current === invitationId
+            ? null
+            : current,
+        );
+      }, 1800);
+    } catch (err) {
+      console.error(
+        "Failed to copy invitation link:",
+        err,
+      );
+
+      setActionError(
+        "Unable to copy invitation link. Please try again.",
+      );
+    }
+  };
+
+  const handleResendInvitation = async (
+    invitationId: number,
+  ) => {
+    if (resending || revoking) {
+      return;
+    }
+
+    try {
+      setActionError(null);
+      setProcessingInvitationId(
+        invitationId,
+      );
+
+      await resendInvitation(
+        invitationId,
+      );
+    } catch {
+      setActionError(
+        "Unable to resend invitation. Please try again.",
+      );
+    } finally {
+      setProcessingInvitationId(null);
+    }
+  };
+
+  const handleRevokeInvitation = async (
+    invitationId: number,
+  ) => {
+    if (revoking || resending) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Revoke this invitation? The current invitation link will no longer be valid.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setActionError(null);
+      setProcessingInvitationId(
+        invitationId,
+      );
+
+      await revokeInvitation(
+        invitationId,
+      );
+    } catch {
+      setActionError(
+        "Unable to revoke invitation. Please try again.",
+      );
+    } finally {
+      setProcessingInvitationId(null);
     }
   };
 
@@ -202,7 +325,8 @@ function OrganizationPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-zinc-500">
-              {error || "Organization information could not be loaded."}
+              {error ||
+                "Organization information could not be loaded."}
             </p>
           </div>
         </div>
@@ -290,8 +414,6 @@ function OrganizationPage() {
             ===================================================== */}
 
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-          {/* Profile header */}
-
           <div className="border-b border-zinc-800/80 px-6 py-7 sm:px-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
               <div
@@ -354,7 +476,9 @@ function OrganizationPage() {
                       `}
                     />
 
-                    {organization.is_active ? "Active" : "Inactive"}
+                    {organization.is_active
+                      ? "Active"
+                      : "Inactive"}
                   </span>
                 </div>
 
@@ -376,8 +500,6 @@ function OrganizationPage() {
               </div>
             </div>
           </div>
-
-          {/* Details */}
 
           <div className="px-6 py-7 sm:px-8">
             {editing ? (
@@ -457,7 +579,11 @@ function OrganizationPage() {
                   disabled={updating}
                 />
 
-                {actionError && <ErrorMessage message={actionError} />}
+                {actionError && (
+                  <ErrorMessage
+                    message={actionError}
+                  />
+                )}
 
                 <div className="flex justify-end gap-3 border-t border-zinc-800/80 pt-5">
                   <button
@@ -507,7 +633,9 @@ function OrganizationPage() {
                   >
                     <Save size={15} />
 
-                    {updating ? "Saving..." : "Save changes"}
+                    {updating
+                      ? "Saving..."
+                      : "Save changes"}
                   </button>
                 </div>
               </div>
@@ -569,14 +697,22 @@ function OrganizationPage() {
                   bg-zinc-900
                 "
               >
-                <Users size={16} className="text-emerald-400" />
+                <Users
+                  size={16}
+                  className="text-emerald-400"
+                />
               </div>
 
               <div>
-                <h2 className="text-sm font-semibold text-zinc-200">Members</h2>
+                <h2 className="text-sm font-semibold text-zinc-200">
+                  Members
+                </h2>
 
                 <p className="mt-1 text-xs text-zinc-600">
-                  {members.length} {members.length === 1 ? "member" : "members"}{" "}
+                  {members.length}{" "}
+                  {members.length === 1
+                    ? "member"
+                    : "members"}{" "}
                   in your organization
                 </p>
               </div>
@@ -624,7 +760,10 @@ function OrganizationPage() {
                   bg-zinc-900
                 "
               >
-                <Users size={18} className="text-zinc-600" />
+                <Users
+                  size={18}
+                  className="text-zinc-600"
+                />
               </div>
 
               <h3 className="mt-4 text-sm font-semibold text-zinc-200">
@@ -638,69 +777,52 @@ function OrganizationPage() {
           ) : (
             <div className="divide-y divide-zinc-800/70">
               {members.map((member) => (
-               <MemberRow
-                   key={member.id}
-                       member={member}
-                    onRoleChange={updateMemberRole}
-  />
-                  ))}
+                <MemberRow
+                  key={member.id}
+                  member={member}
+                  onRoleChange={
+                    updateMemberRole
+                  }
+                />
+              ))}
             </div>
           )}
         </section>
 
-        {/* =======================================================
-    PENDING INVITATIONS
-    ======================================================= */}
+        {/* =====================================================
+            INVITATIONS
+            ===================================================== */}
 
-        <section
-          className="
-    overflow-hidden
-    rounded-2xl
-    border
-    border-zinc-800
-    bg-zinc-950
-  "
-        >
-          <div
-            className="
-      flex
-      flex-col
-      gap-4
-      border-b
-      border-zinc-800/80
-      px-6
-      py-5
-      sm:flex-row
-      sm:items-center
-      sm:justify-between
-      sm:px-8
-    "
-          >
+        <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+          <div className="flex flex-col gap-4 border-b border-zinc-800/80 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div>
               <div className="flex items-center gap-3">
                 <div
                   className="
-            flex
-            h-9
-            w-9
-            items-center
-            justify-center
-            rounded-xl
-            border
-            border-zinc-800
-            bg-zinc-900
-          "
+                    flex
+                    h-9
+                    w-9
+                    items-center
+                    justify-center
+                    rounded-xl
+                    border
+                    border-zinc-800
+                    bg-zinc-900
+                  "
                 >
-                  <Mail size={16} className="text-zinc-500" />
+                  <Mail
+                    size={16}
+                    className="text-zinc-500"
+                  />
                 </div>
 
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-200">
-                    Pending invitations
+                    Invitations
                   </h2>
 
                   <p className="mt-1 text-xs text-zinc-600">
-                    Invitations waiting to be accepted.
+                    Manage invitations sent to your organization.
                   </p>
                 </div>
               </div>
@@ -708,158 +830,477 @@ function OrganizationPage() {
 
             <span
               className="
-        w-fit
-        rounded-full
-        border
-        border-zinc-800
-        bg-zinc-900
-        px-2.5
-        py-1
-        text-[10px]
-        font-semibold
-        uppercase
-        tracking-[0.08em]
-        text-zinc-500
-      "
+                w-fit
+                rounded-full
+                border
+                border-zinc-800
+                bg-zinc-900
+                px-2.5
+                py-1
+                text-[10px]
+                font-semibold
+                uppercase
+                tracking-[0.08em]
+                text-zinc-500
+              "
             >
               {invitations.length}{" "}
-              {invitations.length === 1 ? "invitation" : "invitations"}
+              {invitations.length === 1
+                ? "invitation"
+                : "invitations"}
             </span>
           </div>
 
+          {actionError && !editing && !inviteOpen && (
+            <div className="border-b border-zinc-800/80 px-6 py-4 sm:px-8">
+              <ErrorMessage
+                message={actionError}
+              />
+            </div>
+          )}
+
           {invitations.length === 0 ? (
-            <div
-              className="
-        flex
-        min-h-[160px]
-        flex-col
-        items-center
-        justify-center
-        px-6
-        text-center
-      "
-            >
+            <div className="flex min-h-[160px] flex-col items-center justify-center px-6 text-center">
               <div
                 className="
-          flex
-          h-10
-          w-10
-          items-center
-          justify-center
-          rounded-xl
-          border
-          border-zinc-800
-          bg-zinc-900
-        "
+                  flex
+                  h-10
+                  w-10
+                  items-center
+                  justify-center
+                  rounded-xl
+                  border
+                  border-zinc-800
+                  bg-zinc-900
+                "
               >
-                <Mail size={17} className="text-zinc-600" />
+                <Mail
+                  size={17}
+                  className="text-zinc-600"
+                />
               </div>
 
               <h3 className="mt-4 text-sm font-semibold text-zinc-300">
-                No pending invitations
+                No invitations
               </h3>
 
               <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-600">
-                Invitations you send will appear here until they are accepted.
+                Invitations you send will appear here.
               </p>
             </div>
           ) : (
             <div className="divide-y divide-zinc-800/70">
               {invitations.map((invitation) => {
-                const expiresAt = new Date(invitation.expires_at);
+                const expiresAt =
+                  new Date(
+                    invitation.expires_at,
+                  );
 
-                const isExpired = expiresAt.getTime() < Date.now();
+                const isExpired =
+                  invitation.status ===
+                    "pending" &&
+                  expiresAt.getTime() <
+                    Date.now();
+
+                const isRevoked =
+                  invitation.status ===
+                  "revoked";
+
+                const isAccepted =
+                  invitation.status ===
+                  "accepted";
+
+                const isPending =
+                  invitation.status ===
+                    "pending" &&
+                  !isExpired;
+
+                const isProcessing =
+                  processingInvitationId ===
+                  invitation.id;
+
+                let statusLabel =
+                  "Pending";
+
+                if (isRevoked) {
+                  statusLabel = "Revoked";
+                } else if (isAccepted) {
+                  statusLabel = "Accepted";
+                } else if (isExpired) {
+                  statusLabel = "Expired";
+                } else if (isPending) {
+                  statusLabel = "Pending";
+                }
+
+                const statusClasses =
+                  isRevoked
+                    ? "border-zinc-700 bg-zinc-900 text-zinc-500"
+                    : isAccepted
+                      ? "border-blue-500/20 bg-blue-500/5 text-blue-400"
+                      : isExpired
+                        ? "border-red-500/20 bg-red-500/5 text-red-400"
+                        : "border-emerald-500/20 bg-emerald-500/5 text-emerald-400";
 
                 return (
                   <div
                     key={invitation.id}
                     className="
-              flex
-              flex-col
-              gap-4
-              px-6
-              py-4
-              sm:flex-row
-              sm:items-center
-              sm:px-8
-            "
+                      flex
+                      flex-col
+                      gap-4
+                      px-6
+                      py-5
+                      sm:px-8
+                    "
                   >
-                    <div
-                      className="
-                flex
-                h-10
-                w-10
-                shrink-0
-                items-center
-                justify-center
-                rounded-xl
-                border
-                border-zinc-800
-                bg-zinc-900
-                text-xs
-                font-semibold
-                uppercase
-                text-zinc-500
-              "
-                    >
-                      <Mail size={16} />
-                    </div>
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                      {/* Invitation identity */}
 
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-zinc-200">
-                        {invitation.email}
-                      </p>
+                      <div className="flex min-w-0 flex-1 items-center gap-4">
+                        <div
+                          className="
+                            flex
+                            h-10
+                            w-10
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-xl
+                            border
+                            border-zinc-800
+                            bg-zinc-900
+                            text-xs
+                            font-semibold
+                            uppercase
+                            text-zinc-500
+                          "
+                        >
+                          <Mail size={16} />
+                        </div>
 
-                      <p className="mt-1 text-xs text-zinc-600">
-                        Sent{" "}
-                        {new Date(invitation.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-zinc-200">
+                            {invitation.email}
+                          </p>
 
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="
-                  rounded-full
-                  border
-                  border-zinc-800
-                  bg-zinc-900
-                  px-2.5
-                  py-1
-                  text-[10px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.08em]
-                  text-zinc-500
-                "
-                      >
-                        {invitation.role}
-                      </span>
+                          <p className="mt-1 text-xs text-zinc-600">
+                            Sent{" "}
+                            {new Date(
+                              invitation.created_at,
+                            ).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
 
-                      <span
-                        className={`
-                  rounded-full
-                  border
-                  px-2.5
-                  py-1
-                  text-[10px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.08em]
-                  ${
-                    isExpired
-                      ? "border-red-500/20 bg-red-500/5 text-red-400"
-                      : "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
-                  }
-                `}
-                      >
-                        {isExpired ? "Expired" : "Pending"}
-                      </span>
-                    </div>
+                      {/* Role + status */}
 
-                    <div className="text-xs text-zinc-600 sm:min-w-[130px] sm:text-right">
-                      {isExpired
-                        ? "Invitation expired"
-                        : `Expires ${expiresAt.toLocaleDateString()}`}
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="
+                            rounded-full
+                            border
+                            border-zinc-800
+                            bg-zinc-900
+                            px-2.5
+                            py-1
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-[0.08em]
+                            text-zinc-500
+                          "
+                        >
+                          {invitation.role}
+                        </span>
+
+                        <span
+                          className={`
+                            rounded-full
+                            border
+                            px-2.5
+                            py-1
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-[0.08em]
+                            ${statusClasses}
+                          `}
+                        >
+                          {statusLabel}
+                        </span>
+                      </div>
+
+                      {/* Expiry */}
+
+                      <div className="text-xs text-zinc-600 lg:min-w-[150px] lg:text-right">
+                        {isPending
+                          ? `Expires ${expiresAt.toLocaleDateString()}`
+                          : isExpired
+                            ? "Invitation expired"
+                            : isRevoked
+                              ? "Invitation revoked"
+                              : "Invitation accepted"}
+                      </div>
+
+                      {/* Actions */}
+
+                      <div className="flex flex-wrap items-center gap-2 lg:min-w-[260px] lg:justify-end">
+                        {!isAccepted &&
+                          !isRevoked && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleCopyInvitationLink(
+                                    invitation.id,
+                                    invitation.token,
+                                  )
+                                }
+                                disabled={
+                                  isProcessing
+                                }
+                                className="
+                                  inline-flex
+                                  h-8
+                                  items-center
+                                  gap-1.5
+                                  rounded-lg
+                                  border
+                                  border-zinc-800
+                                  bg-zinc-900
+                                  px-2.5
+                                  text-[10px]
+                                  font-semibold
+                                  uppercase
+                                  tracking-[0.06em]
+                                  text-zinc-500
+                                  transition-colors
+                                  hover:border-zinc-700
+                                  hover:bg-zinc-800
+                                  hover:text-zinc-200
+                                  disabled:cursor-not-allowed
+                                  disabled:opacity-40
+                                "
+                              >
+                                {copiedInvitationId ===
+                                invitation.id ? (
+                                  <Check size={13} />
+                                ) : (
+                                  <Copy size={13} />
+                                )}
+
+                                {copiedInvitationId ===
+                                invitation.id
+                                  ? "Copied"
+                                  : "Copy link"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleResendInvitation(
+                                    invitation.id,
+                                  )
+                                }
+                                disabled={
+                                  isProcessing ||
+                                  resending ||
+                                  revoking
+                                }
+                                className="
+                                  inline-flex
+                                  h-8
+                                  items-center
+                                  gap-1.5
+                                  rounded-lg
+                                  border
+                                  border-zinc-800
+                                  bg-zinc-900
+                                  px-2.5
+                                  text-[10px]
+                                  font-semibold
+                                  uppercase
+                                  tracking-[0.06em]
+                                  text-zinc-500
+                                  transition-colors
+                                  hover:border-zinc-700
+                                  hover:bg-zinc-800
+                                  hover:text-zinc-200
+                                  disabled:cursor-not-allowed
+                                  disabled:opacity-40
+                                "
+                              >
+                                <RefreshCw
+                                  size={13}
+                                  className={
+                                    isProcessing
+                                      ? "animate-spin"
+                                      : ""
+                                  }
+                                />
+
+                                {isProcessing &&
+                                resending
+                                  ? "Resending"
+                                  : "Resend"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleRevokeInvitation(
+                                    invitation.id,
+                                  )
+                                }
+                                disabled={
+                                  isProcessing ||
+                                  revoking ||
+                                  resending
+                                }
+                                className="
+                                  inline-flex
+                                  h-8
+                                  items-center
+                                  gap-1.5
+                                  rounded-lg
+                                  border
+                                  border-red-500/20
+                                  bg-red-500/5
+                                  px-2.5
+                                  text-[10px]
+                                  font-semibold
+                                  uppercase
+                                  tracking-[0.06em]
+                                  text-red-400
+                                  transition-colors
+                                  hover:border-red-500/30
+                                  hover:bg-red-500/10
+                                  disabled:cursor-not-allowed
+                                  disabled:opacity-40
+                                "
+                              >
+                                <Trash2
+                                  size={13}
+                                  className={
+                                    isProcessing &&
+                                    revoking
+                                      ? "animate-pulse"
+                                      : ""
+                                  }
+                                />
+
+                                {isProcessing &&
+                                revoking
+                                  ? "Revoking"
+                                  : "Revoke"}
+                              </button>
+                            </>
+                          )}
+
+                        {isRevoked && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleResendInvitation(
+                                invitation.id,
+                              )
+                            }
+                            disabled={
+                              isProcessing ||
+                              resending ||
+                              revoking
+                            }
+                            className="
+                              inline-flex
+                              h-8
+                              items-center
+                              gap-1.5
+                              rounded-lg
+                              border
+                              border-zinc-800
+                              bg-zinc-900
+                              px-2.5
+                              text-[10px]
+                              font-semibold
+                              uppercase
+                              tracking-[0.06em]
+                              text-zinc-500
+                              transition-colors
+                              hover:border-zinc-700
+                              hover:bg-zinc-800
+                              hover:text-zinc-200
+                              disabled:cursor-not-allowed
+                              disabled:opacity-40
+                            "
+                          >
+                            <RefreshCw
+                              size={13}
+                              className={
+                                isProcessing
+                                  ? "animate-spin"
+                                  : ""
+                              }
+                            />
+
+                            {isProcessing &&
+                            resending
+                              ? "Resending"
+                              : "Resend"}
+                          </button>
+                        )}
+
+                        {isExpired && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleResendInvitation(
+                                invitation.id,
+                              )
+                            }
+                            disabled={
+                              isProcessing ||
+                              resending ||
+                              revoking
+                            }
+                            className="
+                              inline-flex
+                              h-8
+                              items-center
+                              gap-1.5
+                              rounded-lg
+                              border
+                              border-zinc-800
+                              bg-zinc-900
+                              px-2.5
+                              text-[10px]
+                              font-semibold
+                              uppercase
+                              tracking-[0.06em]
+                              text-zinc-500
+                              transition-colors
+                              hover:border-zinc-700
+                              hover:bg-zinc-800
+                              hover:text-zinc-200
+                              disabled:cursor-not-allowed
+                              disabled:opacity-40
+                            "
+                          >
+                            <RefreshCw
+                              size={13}
+                              className={
+                                isProcessing
+                                  ? "animate-spin"
+                                  : ""
+                              }
+                            />
+
+                            {isProcessing &&
+                            resending
+                              ? "Resending"
+                              : "Resend"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -869,9 +1310,9 @@ function OrganizationPage() {
         </section>
       </div>
 
-      {/* =======================================================
-  INVITE MODAL
-  ======================================================= */}
+      {/* =====================================================
+          INVITE MODAL
+          ===================================================== */}
 
       {inviteOpen && (
         <div
@@ -916,7 +1357,10 @@ function OrganizationPage() {
                     bg-zinc-900
                   "
                 >
-                  <UserPlus size={18} className="text-emerald-400" />
+                  <UserPlus
+                    size={18}
+                    className="text-emerald-400"
+                  />
                 </div>
 
                 <div>
@@ -957,10 +1401,13 @@ function OrganizationPage() {
                 type="email"
                 value={inviteForm.email}
                 onChange={(value) => {
-                  setInviteForm((current) => ({
-                    ...current,
-                    email: value,
-                  }));
+                  setInviteForm(
+                    (current) => ({
+                      ...current,
+                      email: value,
+                    }),
+                  );
+
                   setActionError(null);
                   setInviteSuccess(false);
                 }}
@@ -989,10 +1436,13 @@ function OrganizationPage() {
                   value={inviteForm.role}
                   disabled={inviting}
                   onChange={(event) => {
-                    setInviteForm((current) => ({
-                      ...current,
-                      role: event.target.value,
-                    }));
+                    setInviteForm(
+                      (current) => ({
+                        ...current,
+                        role: event.target.value,
+                      }),
+                    );
+
                     setActionError(null);
                   }}
                   className="
@@ -1014,15 +1464,25 @@ function OrganizationPage() {
                     disabled:opacity-50
                   "
                 >
-                  <option value="employee">Employee</option>
+                  <option value="employee">
+                    Employee
+                  </option>
 
-                  <option value="manager">Manager</option>
+                  <option value="manager">
+                    Manager
+                  </option>
 
-                  <option value="admin">Admin</option>
+                  <option value="admin">
+                    Admin
+                  </option>
                 </select>
               </div>
 
-              {actionError && <ErrorMessage message={actionError} />}
+              {actionError && (
+                <ErrorMessage
+                  message={actionError}
+                />
+              )}
 
               {inviteSuccess && (
                 <div
@@ -1091,7 +1551,9 @@ function OrganizationPage() {
               >
                 <UserPlus size={15} />
 
-                {inviting ? "Sending..." : "Send invitation"}
+                {inviting
+                  ? "Sending..."
+                  : "Send invitation"}
               </button>
             </div>
           </div>
@@ -1143,7 +1605,9 @@ function OrganizationInput({
         value={value}
         disabled={disabled}
         placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
         className="
           h-11
           w-full
@@ -1179,7 +1643,11 @@ type InfoItemProps = {
   value: string | null;
 };
 
-function InfoItem({ icon, label, value }: InfoItemProps) {
+function InfoItem({
+  icon,
+  label,
+  value,
+}: InfoItemProps) {
   return (
     <div className="flex min-w-0 items-start gap-3">
       <div
@@ -1218,205 +1686,200 @@ function InfoItem({ icon, label, value }: InfoItemProps) {
    MEMBER ROW
    ========================================================= */
 
-   type MemberRowProps = {
-    member: {
-      id: number;
-      name: string;
-      email: string;
-      role: string;
-      is_active: boolean;
-    };
-  
-    onRoleChange: (
-      userId: number,
-      role: string,
-    ) => Promise<unknown>;
+type MemberRowProps = {
+  member: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    is_active: boolean;
   };
-  
-  function MemberRow({
-    member,
-    onRoleChange,
-  }: MemberRowProps) {
-    const [savingRole, setSavingRole] =
-      useState(false);
-  
-    const [roleError, setRoleError] =
-      useState(false);
-  
-    const initials =
-      member.name
-        .trim()
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((part) =>
-          part.charAt(0).toUpperCase(),
-        )
-        .join("") || "?";
-  
-    const handleRoleChange = async (
-      role: string,
-    ) => {
-      if (role === member.role) {
-        return;
-      }
-  
-      try {
-        setSavingRole(true);
-        setRoleError(false);
-  
-        await onRoleChange(
-          member.id,
-          role,
-        );
-      } catch {
-        setRoleError(true);
-      } finally {
-        setSavingRole(false);
-      }
-    };
-  
-    return (
-      <div className="flex items-center gap-4 px-6 py-4 sm:px-8">
-  
-        {/* Avatar */}
-        <div
+
+  onRoleChange: (
+    userId: number,
+    role: string,
+  ) => Promise<unknown>;
+};
+
+function MemberRow({
+  member,
+  onRoleChange,
+}: MemberRowProps) {
+  const [savingRole, setSavingRole] =
+    useState(false);
+
+  const [roleError, setRoleError] =
+    useState(false);
+
+  const initials =
+    member.name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) =>
+        part.charAt(0).toUpperCase(),
+      )
+      .join("") || "?";
+
+  const handleRoleChange = async (
+    role: string,
+  ) => {
+    if (role === member.role) {
+      return;
+    }
+
+    try {
+      setSavingRole(true);
+      setRoleError(false);
+
+      await onRoleChange(
+        member.id,
+        role,
+      );
+    } catch {
+      setRoleError(true);
+    } finally {
+      setSavingRole(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4 px-6 py-4 sm:px-8">
+      <div
+        className="
+          flex
+          h-10
+          w-10
+          shrink-0
+          items-center
+          justify-center
+          rounded-xl
+          border
+          border-zinc-800
+          bg-zinc-900
+          text-xs
+          font-semibold
+          text-zinc-400
+        "
+      >
+        {initials}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-zinc-200">
+          {member.name}
+        </p>
+
+        <p className="mt-1 truncate text-xs text-zinc-600">
+          {member.email}
+        </p>
+      </div>
+
+      <div className="hidden items-center gap-2 sm:flex">
+        <select
+          value={member.role}
+          disabled={
+            savingRole ||
+            member.role === "owner"
+          }
+          onChange={(event) => {
+            void handleRoleChange(
+              event.target.value,
+            );
+          }}
+          aria-label={`Change role for ${member.name}`}
           className="
-            flex
-            h-10
-            w-10
-            shrink-0
-            items-center
-            justify-center
-            rounded-xl
+            h-8
+            rounded-lg
             border
             border-zinc-800
             bg-zinc-900
-            text-xs
+            px-2.5
+            text-[10px]
             font-semibold
+            uppercase
+            tracking-[0.08em]
             text-zinc-400
+            outline-none
+            transition
+            hover:border-zinc-700
+            hover:text-zinc-200
+            focus:border-emerald-500/50
+            focus:ring-2
+            focus:ring-emerald-500/10
+            disabled:cursor-not-allowed
+            disabled:opacity-50
           "
         >
-          {initials}
-        </div>
-  
-        {/* Member information */}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-zinc-200">
-            {member.name}
-          </p>
-  
-          <p className="mt-1 truncate text-xs text-zinc-600">
-            {member.email}
-          </p>
-        </div>
-  
-        {/* Role + status */}
-        <div className="hidden items-center gap-2 sm:flex">
-  
-          <select
-            value={member.role}
-            disabled={
-              savingRole ||
-              member.role === "owner"
+          <option value="employee">
+            Employee
+          </option>
+
+          <option value="manager">
+            Manager
+          </option>
+
+          <option value="admin">
+            Admin
+          </option>
+
+          {member.role === "owner" && (
+            <option value="owner">
+              Owner
+            </option>
+          )}
+        </select>
+
+        <span
+          className={`
+            rounded-full
+            border
+            px-2.5
+            py-1
+            text-[10px]
+            font-semibold
+            uppercase
+            tracking-[0.08em]
+            ${
+              member.is_active
+                ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                : "border-zinc-800 text-zinc-600"
             }
-            onChange={(event) => {
-              void handleRoleChange(
-                event.target.value,
-              );
-            }}
-            aria-label={`Change role for ${member.name}`}
-            className="
-              h-8
-              rounded-lg
-              border
-              border-zinc-800
-              bg-zinc-900
-              px-2.5
-              text-[10px]
-              font-semibold
-              uppercase
-              tracking-[0.08em]
-              text-zinc-400
-              outline-none
-              transition
-              hover:border-zinc-700
-              hover:text-zinc-200
-              focus:border-emerald-500/50
-              focus:ring-2
-              focus:ring-emerald-500/10
-              disabled:cursor-not-allowed
-              disabled:opacity-50
-            "
-          >
-            <option value="employee">
-              Employee
-            </option>
-  
-            <option value="manager">
-              Manager
-            </option>
-  
-            <option value="admin">
-              Admin
-            </option>
-  
-            {member.role === "owner" && (
-              <option value="owner">
-                Owner
-              </option>
-            )}
-          </select>
-  
-          <span
-            className={`
-              rounded-full
-              border
-              px-2.5
-              py-1
-              text-[10px]
-              font-semibold
-              uppercase
-              tracking-[0.08em]
-              ${
-                member.is_active
-                  ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
-                  : "border-zinc-800 text-zinc-600"
-              }
-            `}
-          >
-            {member.is_active
-              ? "Active"
-              : "Inactive"}
-          </span>
-  
-        </div>
-  
-        {/* Permission indicator */}
-        <ShieldCheck
-          size={16}
-          className={
-            member.is_active
-              ? "text-emerald-500/60"
-              : "text-zinc-700"
-          }
-        />
-  
-        {/* Error */}
-        {roleError && (
-          <span className="text-[10px] text-red-400">
-            Failed
-          </span>
-        )}
-  
+          `}
+        >
+          {member.is_active
+            ? "Active"
+            : "Inactive"}
+        </span>
       </div>
-    );
-  }
+
+      <ShieldCheck
+        size={16}
+        className={
+          member.is_active
+            ? "text-emerald-500/60"
+            : "text-zinc-700"
+        }
+      />
+
+      {roleError && (
+        <span className="text-[10px] text-red-400">
+          Failed
+        </span>
+      )}
+    </div>
+  );
+}
 
 /* =========================================================
    ERROR
    ========================================================= */
 
-function ErrorMessage({ message }: { message: string }) {
+function ErrorMessage({
+  message,
+}: {
+  message: string;
+}) {
   return (
     <div
       role="alert"

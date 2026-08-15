@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.invitation import Invitation
 from app.permissions import require_role
-from typing import List
 
 from app.crud.invitation import (
     create_invitation,
@@ -13,6 +14,8 @@ from app.crud.invitation import (
     get_invitation_by_token,
     get_pending_invitation_by_email,
     get_organization_invitations,
+    revoke_invitation,
+    resend_invitation,
 )
 
 from app.schemas.invitation import (
@@ -20,6 +23,7 @@ from app.schemas.invitation import (
     InvitationCreate,
     InvitationResponse,
 )
+
 
 router = APIRouter(
     prefix="/invitations",
@@ -66,6 +70,7 @@ def create_new_invitation(
             detail=str(exc),
         )
 
+
 @router.get(
     "/",
     response_model=List[InvitationResponse],
@@ -84,6 +89,88 @@ def get_invitations(
         db,
         current_user.organization_id,
     )
+
+
+@router.delete("/{invitation_id}")
+def revoke_invitation_endpoint(
+    invitation_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role("owner", "admin")
+    ),
+):
+    invitation = (
+        db.query(Invitation)
+        .filter(
+            Invitation.id == invitation_id,
+            Invitation.organization_id
+            == current_user.organization_id,
+        )
+        .first()
+    )
+
+    if invitation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Invitation not found.",
+        )
+
+    try:
+        revoke_invitation(
+            db,
+            invitation,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    return {
+        "message": "Invitation revoked successfully."
+    }
+
+
+@router.post(
+    "/{invitation_id}/resend",
+    response_model=InvitationResponse,
+)
+def resend_invitation_endpoint(
+    invitation_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role("owner", "admin")
+    ),
+):
+    invitation = (
+        db.query(Invitation)
+        .filter(
+            Invitation.id == invitation_id,
+            Invitation.organization_id
+            == current_user.organization_id,
+        )
+        .first()
+    )
+
+    if invitation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Invitation not found.",
+        )
+
+    try:
+        return resend_invitation(
+            db,
+            invitation,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
 
 @router.post("/accept")
 def accept_invitation(

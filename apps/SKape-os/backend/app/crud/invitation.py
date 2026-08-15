@@ -70,9 +70,8 @@ def get_organization_invitations(
     return (
         db.query(Invitation)
         .filter(
-                   Invitation.organization_id == organization_id,
-                   Invitation.status == "pending",
-        )         
+    Invitation.organization_id == organization_id,
+)
         .order_by(
             Invitation.created_at.desc()
         )
@@ -91,6 +90,52 @@ def get_invitation_by_token(
         )
         .first()
     )
+
+
+def revoke_invitation(
+    db: Session,
+    invitation: Invitation,
+):
+    if invitation.status == "accepted":
+        raise ValueError(
+            "An accepted invitation cannot be revoked."
+        )
+
+    if invitation.status == "revoked":
+        raise ValueError(
+            "Invitation has already been revoked."
+        )
+
+    invitation.status = "revoked"
+
+    db.commit()
+    db.refresh(invitation)
+
+    return invitation
+
+
+def resend_invitation(
+    db: Session,
+    invitation: Invitation,
+):
+    if invitation.status == "accepted":
+        raise ValueError(
+            "An accepted invitation cannot be resent."
+        )
+
+    invitation.token = secrets.token_urlsafe(32)
+
+    invitation.expires_at = (
+        datetime.now(timezone.utc)
+        + timedelta(days=7)
+    )
+
+    invitation.status = "pending"
+
+    db.commit()
+    db.refresh(invitation)
+
+    return invitation
 
 
 def create_user_from_invitation(
