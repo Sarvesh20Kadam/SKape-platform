@@ -4,6 +4,8 @@ import {
   useState,
 } from "react";
 
+import { useAuth } from "../../../context/AuthContext";
+
 import {
   createInvitation as createInvitationRequest,
   getCurrentOrganization,
@@ -61,6 +63,8 @@ type UseOrganizationResult = {
 };
 
 export function useOrganization(): UseOrganizationResult {
+  const { user } = useAuth();
+
   const [organization, setOrganization] =
     useState<Organization | null>(null);
 
@@ -102,16 +106,38 @@ export function useOrganization(): UseOrganizationResult {
       const [
         organizationData,
         membersData,
-        invitationsData,
       ] = await Promise.all([
         getCurrentOrganization(),
         getOrganizationMembers(),
-        getOrganizationInvitations(),
       ]);
 
       setOrganization(organizationData);
       setMembers(membersData);
-      setInvitations(invitationsData);
+
+      /*
+       * Only users who can manage invitations
+       * should request the invitations endpoint.
+       *
+       * Backend permissions:
+       * owner   -> allowed
+       * admin   -> allowed
+       * manager -> allowed
+       * employee -> forbidden
+       */
+
+      const canManageInvitations =
+        user?.role === "owner" ||
+        user?.role === "admin" ||
+        user?.role === "manager";
+
+      if (canManageInvitations) {
+        const invitationsData =
+          await getOrganizationInvitations();
+
+        setInvitations(invitationsData);
+      } else {
+        setInvitations([]);
+      }
     } catch (err) {
       console.error(
         "Failed to load organization:",
@@ -124,7 +150,7 @@ export function useOrganization(): UseOrganizationResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     void refresh();
@@ -291,64 +317,74 @@ export function useOrganization(): UseOrganizationResult {
     [refresh],
   );
 
-  /*
-   * =========================================================
-   * RESEND INVITATION
-   * =========================================================
-   */
+ /*
+ * =========================================================
+ * RESEND INVITATION
+ * =========================================================
+ */
 
-  const resendInvitation = useCallback(
-    async (
-      invitationId: number,
-    ): Promise<Invitation> => {
-      try {
-        setResending(true);
-        setError(null);
+const resendInvitation = useCallback(
+  async (
+    invitationId: number,
+  ): Promise<Invitation> => {
+    try {
+      setResending(true);
+      setError(null);
 
-        const updated =
-          await resendInvitationRequest(
-            invitationId,
-          );
-
-        await refresh();
-
-        return updated;
-      } catch (err) {
-        console.error(
-          "Failed to resend invitation:",
-          err,
+      const updated =
+        await resendInvitationRequest(
+          invitationId,
         );
 
-        setError(
+      await refresh();
+
+      return updated;
+    } catch (err: any) {
+      console.error(
+        "Failed to resend invitation:",
+        err,
+      );
+
+      const detail =
+        err?.response?.data?.detail;
+
+      setError(
+        detail ||
           "Unable to resend invitation. Please try again.",
-        );
+      );
 
-        throw err;
-      } finally {
-        setResending(false);
-      }
-    },
-    [refresh],
-  );
+      throw err;
+    } finally {
+      setResending(false);
+    }
+  },
+  [refresh],
+);
 
-  return {
-    organization,
-    members,
-    invitations,
+/*
+ * =========================================================
+ * RETURN
+ * =========================================================
+ */
 
-    loading,
-    updating,
-    inviting,
-    revoking,
-    resending,
+return {
+  organization,
+  members,
+  invitations,
 
-    error,
+  loading,
+  updating,
+  inviting,
+  revoking,
+  resending,
 
-    refresh,
-    updateOrganization,
-    createInvitation,
-    updateMemberRole,
-    revokeInvitation,
-    resendInvitation,
-  };
+  error,
+
+  refresh,
+  updateOrganization,
+  createInvitation,
+  updateMemberRole,
+  revokeInvitation,
+  resendInvitation,
+};
 }

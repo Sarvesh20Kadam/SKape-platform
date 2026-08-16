@@ -26,3 +26,7 @@ class InvitationAccept(BaseModel):
     token: str
     name: str
     password: str
+
+
+class InvitationJoin(BaseModel):
+    token: str

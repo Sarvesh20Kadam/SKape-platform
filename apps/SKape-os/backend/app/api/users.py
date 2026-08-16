@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models.user import User
 from app.permissions import require_role
 
@@ -89,6 +90,17 @@ def login(
         "access_token": token,
         "token_type": "bearer",
     }
+
+
+@router.get(
+    "/me",
+    response_model=UserResponse,
+)
+def get_me(
+    current_user=Depends(get_current_user),
+):
+    return current_user
+
 
 
 @router.patch(

@@ -23,7 +23,10 @@ function LoginForm() {
 
   // AuthContext is responsible for storing
   // and managing the authentication token.
-  const { login: loginUser } = useAuth();
+  const {
+    login: loginUser,
+    refreshUser,
+  } = useAuth();
 
   const [serverError, setServerError] =
     useState("");
@@ -87,6 +90,12 @@ function LoginForm() {
           await acceptExistingInvitation(
             invitationToken,
           );
+
+          await refreshUser();
+
+          console.log(
+  "USER REFRESHED AFTER INVITATION",
+);
 
           console.log(
             "INVITATION ACCEPTED",

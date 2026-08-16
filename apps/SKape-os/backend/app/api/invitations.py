@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.invitation import Invitation
 from app.permissions import require_role
 
@@ -21,6 +23,7 @@ from app.crud.invitation import (
 from app.schemas.invitation import (
     InvitationAccept,
     InvitationCreate,
+    InvitationJoin,
     InvitationResponse,
 )
 
@@ -42,9 +45,38 @@ def create_new_invitation(
         require_role("owner", "admin")
     ),
 ):
+    email = invitation.email.strip().lower()
+
+    # =========================================================
+    # CHECK IF USER IS ALREADY A MEMBER
+    # =========================================================
+
+    existing_user = (
+        db.query(User)
+        .filter(
+            User.email == email,
+            User.organization_id
+            == current_user.organization_id,
+        )
+        .first()
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This user is already a member "
+                "of your organization."
+            ),
+        )
+
+    # =========================================================
+    # CHECK EXISTING PENDING INVITATION
+    # =========================================================
+
     existing = get_pending_invitation_by_email(
         db,
-        invitation.email,
+        email,
         current_user.organization_id,
     )
 
@@ -57,10 +89,17 @@ def create_new_invitation(
             ),
         )
 
+    # =========================================================
+    # CREATE INVITATION
+    # =========================================================
+
     try:
         return create_invitation(
             db,
-            invitation,
+            InvitationCreate(
+                email=email,
+                role=invitation.role,
+            ),
             current_user.organization_id,
         )
 
@@ -69,7 +108,6 @@ def create_new_invitation(
             status_code=400,
             detail=str(exc),
         )
-
 
 @router.get(
     "/",
@@ -91,7 +129,9 @@ def get_invitations(
     )
 
 
-@router.delete("/{invitation_id}")
+@router.delete(
+    "/{invitation_id}"
+)
 def revoke_invitation_endpoint(
     invitation_id: int,
     db: Session = Depends(get_db),
@@ -243,4 +283,70 @@ def accept_invitation(
         "user_id": user.id,
         "organization_id": user.organization_id,
         "role": user.role,
+    }
+
+
+@router.post("/accept-existing")
+def accept_existing_user_invitation(
+    request: InvitationJoin,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    invitation = get_invitation_by_token(
+        db,
+        request.token,
+    )
+
+    if not invitation:
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid invitation token.",
+        )
+
+    if invitation.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Invitation has already been used.",
+        )
+
+    now = datetime.now(timezone.utc)
+
+    expires_at = invitation.expires_at
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(
+            tzinfo=timezone.utc
+        )
+
+    if expires_at < now:
+        raise HTTPException(
+            status_code=400,
+            detail="Invitation has expired.",
+        )
+
+    if current_user.email.lower() != invitation.email.lower():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This invitation was sent to a different "
+                "email address."
+            ),
+        )
+
+    current_user.organization_id = (
+        invitation.organization_id
+    )
+
+    current_user.role = invitation.role
+
+    invitation.status = "accepted"
+
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "message": "Invitation accepted successfully.",
+        "user_id": current_user.id,
+        "organization_id": current_user.organization_id,
+        "role": current_user.role,
     }

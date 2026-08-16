@@ -55,7 +55,7 @@ def get_pending_invitation_by_email(
     return (
         db.query(Invitation)
         .filter(
-            Invitation.email == email,
+            Invitation.email.ilike(email),
             Invitation.organization_id == organization_id,
             Invitation.status == "pending",
         )
