@@ -40,7 +40,12 @@ class User(Base):
         "Task",
         back_populates="assignee"
     )
-
+    
+    assets = relationship(
+        "Asset",
+        back_populates="assignee",
+    )
+    
     comments = relationship(
         "Comment",
         back_populates="user",

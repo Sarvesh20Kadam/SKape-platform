@@ -13,6 +13,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.comments import router as comments_router
 from app.api.activity import router as activity_router
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.assets import router as assets_router
 
 from app.exceptions import (
     NotFoundException,
@@ -77,6 +78,10 @@ app.include_router(
 )
 app.include_router(
     tasks_router,
+    prefix="/api/v1"
+)
+app.include_router(
+    assets_router,
     prefix="/api/v1"
 )
 app.include_router(

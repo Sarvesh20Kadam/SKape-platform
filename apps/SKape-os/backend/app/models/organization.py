@@ -45,6 +45,12 @@ class Organization(Base):
         cascade="all, delete-orphan"
     )
 
+    assets = relationship(
+        "Asset",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
+
     invitations = relationship(
         "Invitation",
         back_populates="organization",
