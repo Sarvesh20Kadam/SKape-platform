@@ -4,6 +4,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   Settings,
+  Boxes,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,11 @@ const workspaceNavigation: NavigationItem[] = [
     label: "Projects",
     path: "/projects",
     icon: FolderKanban,
+  },
+  {
+    label: "Assets",
+    path: "/assets",
+    icon: Boxes,
   },
   {
     label: "Tasks",

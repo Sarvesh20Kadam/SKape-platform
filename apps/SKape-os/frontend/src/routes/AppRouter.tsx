@@ -12,6 +12,7 @@ import ProjectsPage from "../pages/ProjectsPage";
 import ProjectDetailPage from "../pages/ProjectDetailPage";
 import TasksPage from "../pages/TasksPage";
 import TaskDetailPage from "../pages/TaskDetailPage";
+import AssetsPage from "../pages/AssetsPage";
 
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -70,6 +71,15 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
+
+      <Route
+        path="/assets"
+        element={
+          <ProtectedRoute>
+             <AssetsPage />
+         </ProtectedRoute>
+  }
+/>
 
       <Route
         path="/projects/:projectId"
