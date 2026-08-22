@@ -12,8 +12,8 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 
-class Asset(Base):
-    __tablename__ = "assets"
+class Device(Base):
+    __tablename__ = "devices"
 
     id = Column(
         Integer,
@@ -21,29 +21,26 @@ class Asset(Base):
         index=True,
     )
 
+    device_id = Column(
+        String,
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+
     name = Column(
         String,
         nullable=False,
     )
 
-    asset_type = Column(
+    device_type = Column(
         String,
         nullable=False,
     )
 
-    description = Column(
-        String,
-        nullable=True,
-    )
-
-    location = Column(
-        String,
-        nullable=True,
-    )
-
     status = Column(
         String,
-        default="active",
+        default="offline",
         nullable=False,
     )
 
@@ -53,9 +50,14 @@ class Asset(Base):
         nullable=False,
     )
 
-    assigned_to = Column(
+    asset_id = Column(
         Integer,
-        ForeignKey("users.id"),
+        ForeignKey("assets.id"),
+        nullable=True,
+    )
+
+    last_seen_at = Column(
+        DateTime(timezone=True),
         nullable=True,
     )
 
@@ -78,15 +80,10 @@ class Asset(Base):
 
     organization = relationship(
         "Organization",
-        back_populates="assets",
+        back_populates="devices",
     )
 
-    assignee = relationship(
-        "User",
-        back_populates="assets",
-    )
-
-    devices = relationship(
-        "Device",
-        back_populates="asset",
+    asset = relationship(
+        "Asset",
+        back_populates="devices",
     )

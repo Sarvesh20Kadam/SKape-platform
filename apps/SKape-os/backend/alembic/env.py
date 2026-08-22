@@ -28,6 +28,7 @@ from app.models.task import Task
 from app.models.comment import Comment
 from app.models.activity import Activity
 from app.models.asset import Asset
+from app.models.device import Device
 
 target_metadata = Base.metadata
 
