@@ -1,10 +1,11 @@
 import {
+  Boxes,
   Building2,
   CheckSquare,
+  Cpu,
   FolderKanban,
   LayoutDashboard,
   Settings,
-  Boxes,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -31,6 +32,11 @@ const workspaceNavigation: NavigationItem[] = [
     label: "Projects",
     path: "/projects",
     icon: FolderKanban,
+  },
+  {
+    label: "Devices",
+    path: "/devices",
+    icon: Cpu,
   },
   {
     label: "Assets",

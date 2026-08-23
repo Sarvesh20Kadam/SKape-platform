@@ -13,6 +13,7 @@ import ProjectDetailPage from "../pages/ProjectDetailPage";
 import TasksPage from "../pages/TasksPage";
 import TaskDetailPage from "../pages/TaskDetailPage";
 import AssetsPage from "../pages/AssetsPage";
+import DevicesPage from "../pages/DevicesPage";
 
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -78,8 +79,17 @@ function AppRouter() {
           <ProtectedRoute>
              <AssetsPage />
          </ProtectedRoute>
+        }
+      />
+      
+      <Route
+        path="/devices"
+        element={
+          <ProtectedRoute>
+            <DevicesPage />
+          </ProtectedRoute>
   }
-/>
+  />
 
       <Route
         path="/projects/:projectId"
