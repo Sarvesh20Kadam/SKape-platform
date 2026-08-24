@@ -1,4 +1,7 @@
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 
 from app.crud.activity import log_activity
 from app.models.device import Device
@@ -148,3 +151,81 @@ def delete_device(
     )
 
     return device
+
+
+def heartbeat_device(
+    db: Session,
+    device_id: str,
+):
+    device = (
+        db.query(Device)
+        .filter(
+            Device.device_id == device_id,
+        )
+        .first()
+    )
+
+    if device is None:
+        return None
+
+    device.status = "online"
+    device.last_seen_at = func.now()
+    device.is_active = True
+
+    db.commit()
+    db.refresh(device)
+
+    return device
+
+
+def mark_stale_devices_offline(
+    db: Session,
+    timeout_seconds: int = 30,
+):
+    now = datetime.now(timezone.utc)
+
+    online_devices = (
+        db.query(Device)
+        .filter(
+            Device.status == "online",
+            Device.last_seen_at.isnot(None),
+        )
+        .all()
+    )
+
+    stale_devices = []
+
+    for device in online_devices:
+        last_seen = device.last_seen_at
+
+        if last_seen is None:
+            continue
+
+        # Some database drivers may return a naive datetime.
+        # Treat it as UTC so comparison is always consistent.
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(
+                tzinfo=timezone.utc
+            )
+
+        age_seconds = (
+            now - last_seen
+        ).total_seconds()
+
+        if age_seconds > timeout_seconds:
+            device.status = "offline"
+            stale_devices.append(device)
+
+            print(
+                f"[DEVICE MONITOR] "
+                f"{device.device_id} marked OFFLINE "
+                f"(last heartbeat {age_seconds:.1f}s ago)"
+            )
+
+    if stale_devices:
+        db.commit()
+
+        for device in stale_devices:
+            db.refresh(device)
+
+    return stale_devices

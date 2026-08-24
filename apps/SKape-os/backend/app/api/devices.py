@@ -13,6 +13,7 @@ from app.crud.device import (
     get_device_by_id as db_get_device_by_id,
     update_device as db_update_device,
     delete_device as db_delete_device,
+    heartbeat_device as db_heartbeat_device,
 )
 
 from app.schemas.device import (
@@ -50,7 +51,6 @@ def create(
             organization_id=current_user.organization_id,
             user_id=current_user.id,
         )
-
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -81,6 +81,28 @@ def get_all(
         skip=skip,
         limit=limit,
     )
+
+
+@router.post(
+    "/heartbeat",
+    response_model=DeviceResponse,
+)
+def heartbeat(
+    device_id: str,
+    db: Session = Depends(get_db),
+):
+    device = db_heartbeat_device(
+        db=db,
+        device_id=device_id,
+    )
+
+    if device is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Device not found",
+        )
+
+    return device
 
 
 @router.get(
