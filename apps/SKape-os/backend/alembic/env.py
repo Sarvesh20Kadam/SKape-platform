@@ -29,6 +29,7 @@ from app.models.comment import Comment
 from app.models.activity import Activity
 from app.models.asset import Asset
 from app.models.device import Device
+from app.models.telemetry import DeviceTelemetry
 
 target_metadata = Base.metadata
 

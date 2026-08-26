@@ -87,3 +87,9 @@ class Device(Base):
         "Asset",
         back_populates="devices",
     )
+
+    telemetry = relationship(
+        "DeviceTelemetry",
+        back_populates="device",
+        cascade="all, delete-orphan",
+    )
