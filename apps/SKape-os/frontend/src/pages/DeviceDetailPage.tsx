@@ -26,8 +26,19 @@ import { getDevice } from "../features/devices/services/device.service";
 
 import {
   getLatestTelemetry,
+  getTelemetryHistory,
   type DeviceTelemetry,
 } from "../features/devices/services/telemetry.service";
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 
 import type { Device } from "../features/devices/types/device.types";
 
@@ -59,6 +70,12 @@ function DeviceDetailPage() {
 
   const [telemetryError, setTelemetryError] =
     useState<string | null>(null);
+
+  const [telemetryHistory, setTelemetryHistory] =
+    useState<DeviceTelemetry[]>([]);
+  
+  const [historyLoading, setHistoryLoading] =
+    useState(true);
 
   /*
    * --------------------------------------------------------
@@ -169,6 +186,43 @@ function DeviceDetailPage() {
     [deviceId, numericDeviceId],
   );
 
+  const loadTelemetryHistory = useCallback(
+    async (showLoading = true) => {
+      if (
+        !deviceId ||
+        Number.isNaN(numericDeviceId)
+      ) {
+        setHistoryLoading(false);
+        return;
+      }
+  
+      try {
+        if (showLoading) {
+          setHistoryLoading(true);
+        }
+  
+        const data = await getTelemetryHistory(
+          numericDeviceId,
+          50,
+        );
+  
+        setTelemetryHistory(
+          [...data].reverse(),
+        );
+      } catch (err) {
+        console.error(
+          "Failed to load telemetry history:",
+          err,
+        );
+      } finally {
+        if (showLoading) {
+          setHistoryLoading(false);
+        }
+      }
+    },
+    [deviceId, numericDeviceId],
+  );
+
   /*
    * --------------------------------------------------------
    * INITIAL LOAD
@@ -178,7 +232,12 @@ function DeviceDetailPage() {
   useEffect(() => {
     void loadDevice(true);
     void loadTelemetry(true);
-  }, [loadDevice, loadTelemetry]);
+    void loadTelemetryHistory(true);
+  }, [
+    loadDevice,
+    loadTelemetry,
+    loadTelemetryHistory,
+  ]);
 
   /*
    * --------------------------------------------------------
@@ -221,6 +280,24 @@ function DeviceDetailPage() {
       window.clearInterval(intervalId);
     };
   }, [deviceId, loadTelemetry]);
+
+  useEffect(() => {
+    if (!deviceId) {
+      return;
+    }
+  
+    const intervalId =
+      window.setInterval(() => {
+        void loadTelemetryHistory(false);
+      }, TELEMETRY_REFRESH_INTERVAL);
+  
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    deviceId,
+    loadTelemetryHistory,
+  ]);
 
   /*
    * --------------------------------------------------------
@@ -270,6 +347,22 @@ function DeviceDetailPage() {
 
   const isMaintenance =
     device?.status === "maintenance";
+
+    const chartData = telemetryHistory.map(
+      (reading) => ({
+        time: new Date(
+          reading.created_at,
+        ).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+        temperature: reading.temperature,
+        sensor1: reading.sensor_1,
+        sensor2: reading.sensor_2,
+        sensor3: reading.sensor_3,
+      }),
+    );
 
   return (
     <DashboardLayout>
@@ -731,6 +824,276 @@ function DeviceDetailPage() {
                 </div>
 
               </div>
+
+{/* ==================================================
+    TELEMETRY HISTORY
+================================================== */}
+
+<div className="rounded-xl border border-zinc-800 bg-zinc-950">
+
+  <div className="border-b border-zinc-800 px-6 py-5">
+
+    <div className="flex items-center justify-between">
+
+      <div>
+
+        <h2 className="text-sm font-semibold text-zinc-100">
+          Telemetry history
+        </h2>
+
+        <p className="mt-1 text-xs text-zinc-500">
+          Recent sensor readings reported by this device.
+        </p>
+
+      </div>
+
+      <Activity
+        size={18}
+        className="text-emerald-400"
+      />
+
+    </div>
+
+  </div>
+
+  <div className="p-6">
+
+    {historyLoading &&
+      telemetryHistory.length === 0 && (
+        <div className="flex items-center gap-3 text-sm text-zinc-500">
+
+          <RefreshCw
+            size={16}
+            className="animate-spin"
+          />
+
+          Loading telemetry history...
+
+        </div>
+      )}
+
+    {!historyLoading &&
+      telemetryHistory.length === 0 && (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5">
+
+          <p className="text-sm font-medium text-zinc-300">
+            No history available
+          </p>
+
+          <p className="mt-1 text-xs text-zinc-500">
+            Historical sensor readings will appear here
+            once the device starts reporting telemetry.
+          </p>
+
+        </div>
+      )}
+
+    {telemetryHistory.length > 0 && (
+      <div className="h-[320px] w-full">
+
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+        >
+
+          <LineChart
+            data={chartData}
+            margin={{
+              top: 10,
+              right: 10,
+              left: -20,
+              bottom: 5,
+            }}
+          >
+
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="rgba(255,255,255,0.06)"
+            />
+
+            <XAxis
+              dataKey="time"
+              tick={{
+                fill: "#71717a",
+                fontSize: 11,
+              }}
+              tickLine={false}
+              axisLine={false}
+            />
+
+            <YAxis
+              tick={{
+                fill: "#71717a",
+                fontSize: 11,
+              }}
+              tickLine={false}
+              axisLine={false}
+            />
+
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#09090b",
+                border: "1px solid #27272a",
+                borderRadius: "8px",
+                color: "#f4f4f5",
+              }}
+              labelStyle={{
+                color: "#a1a1aa",
+              }}
+            />
+
+            <Line
+              type="monotone"
+              dataKey="temperature"
+              name="Temperature"
+              stroke="#34d399"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+            />
+
+            <Line
+              type="monotone"
+              dataKey="sensor1"
+              name="Sensor 1"
+              stroke="#60a5fa"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+            />
+
+            <Line
+              type="monotone"
+              dataKey="sensor2"
+              name="Sensor 2"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+            />
+
+            <Line
+              type="monotone"
+              dataKey="sensor3"
+              name="Sensor 3"
+              stroke="#a78bfa"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+            />
+
+          </LineChart>
+
+        </ResponsiveContainer>
+
+      </div>
+    )}
+
+  </div>
+
+</div>
+
+{/* Recent readings */}
+
+<div className="mt-8 border-t border-zinc-800 pt-6">
+
+  <div className="mb-4">
+    <h3 className="text-sm font-semibold text-zinc-100">
+      Recent readings
+    </h3>
+
+    <p className="mt-1 text-xs text-zinc-500">
+      Latest telemetry records received from the device.
+    </p>
+  </div>
+
+  <div className="overflow-x-auto rounded-lg border border-zinc-800">
+
+    <table className="w-full text-left text-sm">
+
+      <thead className="border-b border-zinc-800 bg-zinc-900/60">
+
+        <tr>
+          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
+            Time
+          </th>
+
+          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
+            Temperature
+          </th>
+
+          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
+            Sensor 1
+          </th>
+
+          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
+            Sensor 2
+          </th>
+
+          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
+            Sensor 3
+          </th>
+        </tr>
+
+      </thead>
+
+      <tbody className="divide-y divide-zinc-800">
+
+        {[...telemetryHistory]
+          .reverse()
+          .slice(0, 10)
+          .map((reading) => (
+
+            <tr
+              key={reading.id}
+              className="transition-colors hover:bg-zinc-900/50"
+            >
+
+              <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-zinc-400">
+                {new Date(
+                  reading.created_at,
+                ).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </td>
+
+              <td className="px-4 py-3 text-zinc-200">
+                {reading.temperature !== null
+                  ? `${reading.temperature.toFixed(2)} °C`
+                  : "—"}
+              </td>
+
+              <td className="px-4 py-3 text-zinc-300">
+                {reading.sensor_1 !== null
+                  ? reading.sensor_1.toFixed(2)
+                  : "—"}
+              </td>
+
+              <td className="px-4 py-3 text-zinc-300">
+                {reading.sensor_2 !== null
+                  ? reading.sensor_2.toFixed(2)
+                  : "—"}
+              </td>
+
+              <td className="px-4 py-3 text-zinc-300">
+                {reading.sensor_3 !== null
+                  ? reading.sensor_3.toFixed(2)
+                  : "—"}
+              </td>
+
+            </tr>
+
+          ))}
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+</div>
 
               {/* ==================================================
                   INFORMATION + CONNECTIVITY
