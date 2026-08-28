@@ -18,6 +18,7 @@ from app.api.activity import router as activity_router
 from app.api.assets import router as assets_router
 from app.api.devices import router as devices_router
 from app.api.telemetry import router as telemetry_router
+from app.api.device_health import router as device_health_router
 
 from app.core.config import settings
 
@@ -155,5 +156,10 @@ app.include_router(
 
 app.include_router(
     telemetry_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    device_health_router,
     prefix="/api/v1",
 )
