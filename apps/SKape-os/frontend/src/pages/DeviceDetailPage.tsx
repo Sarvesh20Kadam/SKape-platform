@@ -10,11 +10,13 @@ import {
   Thermometer,
   Activity,
 } from "lucide-react";
+
 import {
   useCallback,
   useEffect,
   useState,
 } from "react";
+
 import {
   useNavigate,
   useParams,
@@ -22,13 +24,19 @@ import {
 
 import DashboardLayout from "../components/Layout/DashboardLayout";
 
-import { getDevice } from "../features/devices/services/device.service";
+import {
+  getDevice,
+} from "../features/devices/services/device.service";
 
 import {
   getLatestTelemetry,
   getTelemetryHistory,
   type DeviceTelemetry,
 } from "../features/devices/services/telemetry.service";
+
+import {
+  useDeviceHealth,
+} from "../features/devices/hooks/useDeviceHealth";
 
 import {
   ResponsiveContainer,
@@ -42,8 +50,11 @@ import {
 
 import type { Device } from "../features/devices/types/device.types";
 
+
 const DEVICE_REFRESH_INTERVAL = 5000;
+
 const TELEMETRY_REFRESH_INTERVAL = 5000;
+
 
 function DeviceDetailPage() {
   const navigate = useNavigate();
@@ -52,6 +63,28 @@ function DeviceDetailPage() {
     useParams<{ deviceId: string }>();
 
   const numericDeviceId = Number(deviceId);
+
+
+  /*
+   * --------------------------------------------------------
+   * DEVICE HEALTH
+   * --------------------------------------------------------
+   */
+
+  const {
+    health,
+    loading: healthLoading,
+    error: healthError,
+  } = useDeviceHealth(
+    numericDeviceId,
+  );
+
+
+  /*
+   * --------------------------------------------------------
+   * DEVICE STATE
+   * --------------------------------------------------------
+   */
 
   const [device, setDevice] =
     useState<Device | null>(null);
@@ -73,9 +106,10 @@ function DeviceDetailPage() {
 
   const [telemetryHistory, setTelemetryHistory] =
     useState<DeviceTelemetry[]>([]);
-  
+
   const [historyLoading, setHistoryLoading] =
     useState(true);
+
 
   /*
    * --------------------------------------------------------
@@ -85,9 +119,16 @@ function DeviceDetailPage() {
 
   const loadDevice = useCallback(
     async (showLoading = true) => {
-      if (!deviceId || Number.isNaN(numericDeviceId)) {
-        setError("Device ID is missing.");
+      if (
+        !deviceId ||
+        Number.isNaN(numericDeviceId)
+      ) {
+        setError(
+          "Device ID is missing.",
+        );
+
         setLoading(false);
+
         return;
       }
 
@@ -97,11 +138,13 @@ function DeviceDetailPage() {
           setError(null);
         }
 
-        const data = await getDevice(
-          numericDeviceId,
-        );
+        const data =
+          await getDevice(
+            numericDeviceId,
+          );
 
         setDevice(data);
+
         setError(null);
       } catch (err: any) {
         console.error(
@@ -124,16 +167,17 @@ function DeviceDetailPage() {
         }
       }
     },
-    [deviceId, numericDeviceId],
+    [
+      deviceId,
+      numericDeviceId,
+    ],
   );
+
 
   /*
    * --------------------------------------------------------
-   * LOAD TELEMETRY
+   * LOAD LATEST TELEMETRY
    * --------------------------------------------------------
-   *
-   * Background refresh does NOT touch the main loading
-   * state. This prevents page blinking/stuttering.
    */
 
   const loadTelemetry = useCallback(
@@ -143,6 +187,7 @@ function DeviceDetailPage() {
         Number.isNaN(numericDeviceId)
       ) {
         setTelemetryLoading(false);
+
         return;
       }
 
@@ -157,6 +202,7 @@ function DeviceDetailPage() {
           );
 
         setTelemetry(data);
+
         setTelemetryError(null);
       } catch (err: any) {
         console.error(
@@ -169,6 +215,7 @@ function DeviceDetailPage() {
 
         if (status === 404) {
           setTelemetry(null);
+
           setTelemetryError(
             "No telemetry available yet.",
           );
@@ -183,45 +230,70 @@ function DeviceDetailPage() {
         }
       }
     },
-    [deviceId, numericDeviceId],
+    [
+      deviceId,
+      numericDeviceId,
+    ],
   );
 
-  const loadTelemetryHistory = useCallback(
-    async (showLoading = true) => {
-      if (
-        !deviceId ||
-        Number.isNaN(numericDeviceId)
-      ) {
-        setHistoryLoading(false);
-        return;
-      }
-  
-      try {
-        if (showLoading) {
-          setHistoryLoading(true);
-        }
-  
-        const data = await getTelemetryHistory(
-          numericDeviceId,
-          50,
-        );
-  
-        setTelemetryHistory(
-          [...data].reverse(),
-        );
-      } catch (err) {
-        console.error(
-          "Failed to load telemetry history:",
-          err,
-        );
-      } finally {
-        if (showLoading) {
+
+  /*
+   * --------------------------------------------------------
+   * LOAD TELEMETRY HISTORY
+   * --------------------------------------------------------
+   */
+
+  const loadTelemetryHistory =
+    useCallback(
+      async (showLoading = true) => {
+        if (
+          !deviceId ||
+          Number.isNaN(numericDeviceId)
+        ) {
           setHistoryLoading(false);
+
+          return;
         }
-      }
-    },
-    [deviceId, numericDeviceId],
-  );
+
+        try {
+          if (showLoading) {
+            setHistoryLoading(true);
+          }
+
+          const data =
+            await getTelemetryHistory(
+              numericDeviceId,
+              50,
+            );
+
+          /*
+           * Backend returns newest first.
+           *
+           * Reverse so chart renders:
+           *
+           * oldest ----------------> newest
+           */
+
+          setTelemetryHistory(
+            [...data].reverse(),
+          );
+        } catch (err) {
+          console.error(
+            "Failed to load telemetry history:",
+            err,
+          );
+        } finally {
+          if (showLoading) {
+            setHistoryLoading(false);
+          }
+        }
+      },
+      [
+        deviceId,
+        numericDeviceId,
+      ],
+    );
+
 
   /*
    * --------------------------------------------------------
@@ -231,13 +303,16 @@ function DeviceDetailPage() {
 
   useEffect(() => {
     void loadDevice(true);
+
     void loadTelemetry(true);
+
     void loadTelemetryHistory(true);
   }, [
     loadDevice,
     loadTelemetry,
     loadTelemetryHistory,
   ]);
+
 
   /*
    * --------------------------------------------------------
@@ -256,9 +331,15 @@ function DeviceDetailPage() {
       }, DEVICE_REFRESH_INTERVAL);
 
     return () => {
-      window.clearInterval(intervalId);
+      window.clearInterval(
+        intervalId,
+      );
     };
-  }, [deviceId, loadDevice]);
+  }, [
+    deviceId,
+    loadDevice,
+  ]);
+
 
   /*
    * --------------------------------------------------------
@@ -277,27 +358,44 @@ function DeviceDetailPage() {
       }, TELEMETRY_REFRESH_INTERVAL);
 
     return () => {
-      window.clearInterval(intervalId);
+      window.clearInterval(
+        intervalId,
+      );
     };
-  }, [deviceId, loadTelemetry]);
+  }, [
+    deviceId,
+    loadTelemetry,
+  ]);
+
+
+  /*
+   * --------------------------------------------------------
+   * TELEMETRY HISTORY POLLING
+   * --------------------------------------------------------
+   */
 
   useEffect(() => {
     if (!deviceId) {
       return;
     }
-  
+
     const intervalId =
       window.setInterval(() => {
-        void loadTelemetryHistory(false);
+        void loadTelemetryHistory(
+          false,
+        );
       }, TELEMETRY_REFRESH_INTERVAL);
-  
+
     return () => {
-      window.clearInterval(intervalId);
+      window.clearInterval(
+        intervalId,
+      );
     };
   }, [
     deviceId,
     loadTelemetryHistory,
   ]);
+
 
   /*
    * --------------------------------------------------------
@@ -312,24 +410,33 @@ function DeviceDetailPage() {
       return "Never";
     }
 
-    return new Date(value).toLocaleString();
+    return new Date(
+      value,
+    ).toLocaleString();
   };
+
 
   /*
    * --------------------------------------------------------
-   * TELEMETRY DATE
+   * TELEMETRY DATE FORMATTER
    * --------------------------------------------------------
    */
 
   const formatTelemetryTime = (
-    value: string | null | undefined,
+    value:
+      | string
+      | null
+      | undefined,
   ) => {
     if (!value) {
       return "Never";
     }
 
-    return new Date(value).toLocaleString();
+    return new Date(
+      value,
+    ).toLocaleString();
   };
+
 
   /*
    * --------------------------------------------------------
@@ -337,49 +444,128 @@ function DeviceDetailPage() {
    * --------------------------------------------------------
    */
 
-  const statusLabel = device?.status
-    ? device.status.charAt(0).toUpperCase() +
-      device.status.slice(1)
-    : "Unknown";
+  const statusLabel =
+    device?.status
+      ? device.status
+          .charAt(0)
+          .toUpperCase() +
+        device.status.slice(1)
+      : "Unknown";
+
 
   const isOnline =
     device?.status === "online";
 
-  const isMaintenance =
-    device?.status === "maintenance";
 
-    const chartData = telemetryHistory.map(
+  const isMaintenance =
+    device?.status ===
+    "maintenance";
+
+
+  /*
+   * --------------------------------------------------------
+   * HEALTH STATUS HELPERS
+   * --------------------------------------------------------
+   */
+
+  const healthStatus =
+    health?.status ?? null;
+
+
+  const healthLabel =
+    healthStatus
+      ? healthStatus
+          .charAt(0)
+          .toUpperCase() +
+        healthStatus.slice(1)
+      : "Unknown";
+
+
+  const healthTextClass =
+    healthStatus === "healthy"
+      ? "text-emerald-400"
+      : healthStatus === "warning"
+        ? "text-amber-400"
+        : healthStatus === "critical"
+          ? "text-red-400"
+          : "text-zinc-400";
+
+
+  const healthIconClass =
+    healthStatus === "healthy"
+      ? "text-emerald-400"
+      : healthStatus === "warning"
+        ? "text-amber-400"
+        : healthStatus === "critical"
+          ? "text-red-400"
+          : "text-zinc-400";
+
+
+
+  /*
+   * --------------------------------------------------------
+   * CHART DATA
+   * --------------------------------------------------------
+   */
+
+  const chartData =
+    telemetryHistory.map(
       (reading) => ({
         time: new Date(
           reading.created_at,
-        ).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-        temperature: reading.temperature,
-        sensor1: reading.sensor_1,
-        sensor2: reading.sensor_2,
-        sensor3: reading.sensor_3,
+        ).toLocaleTimeString(
+          [],
+          {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          },
+        ),
+
+        temperature:
+          reading.temperature,
+
+        sensor1:
+          reading.sensor_1,
+
+        sensor2:
+          reading.sensor_2,
+
+        sensor3:
+          reading.sensor_3,
       }),
     );
 
+
   return (
     <DashboardLayout>
+
       <section className="space-y-8">
+
 
         {/* ==================================================
             HEADER
         ================================================== */}
 
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <div
+          className="
+            flex
+            flex-col
+            gap-5
+            sm:flex-row
+            sm:items-start
+            sm:justify-between
+          "
+        >
 
           <div>
 
             <button
               type="button"
               onClick={() =>
-                navigate("/devices")
+                navigate(
+                  "/devices",
+                )
               }
               className="
                 mb-5
@@ -392,170 +578,317 @@ function DeviceDetailPage() {
                 hover:text-zinc-200
               "
             >
-              <ArrowLeft size={16} />
+
+              <ArrowLeft
+                size={16}
+              />
+
               Back to devices
+
             </button>
 
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-400">
+
+            <p
+              className="
+                text-xs
+                font-semibold
+                uppercase
+                tracking-[0.16em]
+                text-emerald-400
+              "
+            >
               Device
             </p>
 
-            <h1 className="mt-2 text-3xl font-bold tracking-[-0.04em] text-zinc-100">
+
+            <h1
+              className="
+                mt-2
+                text-3xl
+                font-bold
+                tracking-[-0.04em]
+                text-zinc-100
+              "
+            >
               {loading
                 ? "Loading..."
-                : device?.name || "Device"}
+                : device?.name ||
+                  "Device"}
             </h1>
 
-            <p className="mt-2 text-sm text-zinc-500">
+
+            <p
+              className="
+                mt-2
+                text-sm
+                text-zinc-500
+              "
+            >
               Device ID:{" "}
 
-              <span className="font-mono text-zinc-400">
-                {device?.device_id || "—"}
+              <span
+                className="
+                  font-mono
+                  text-zinc-400
+                "
+              >
+                {device?.device_id ||
+                  "—"}
               </span>
+
             </p>
 
           </div>
 
+
           {/* STATUS BADGE */}
 
-          {!loading && device && (
-            <div
-              className={`
-                inline-flex
-                items-center
-                gap-2
-                rounded-full
-                border
-                px-3
-                py-1.5
-                text-xs
-                font-semibold
+          {!loading &&
+            device && (
 
-                ${
-                  isOnline
-                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                    : isMaintenance
-                      ? "border-amber-500/20 bg-amber-500/10 text-amber-400"
-                      : "border-zinc-700 bg-zinc-900 text-zinc-400"
-                }
-              `}
-            >
-
-              <span
+              <div
                 className={`
-                  h-1.5
-                  w-1.5
+                  inline-flex
+                  items-center
+                  gap-2
                   rounded-full
+                  border
+                  px-3
+                  py-1.5
+                  text-xs
+                  font-semibold
 
                   ${
                     isOnline
-                      ? "bg-emerald-400"
+                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                       : isMaintenance
-                        ? "bg-amber-400"
-                        : "bg-zinc-500"
+                        ? "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                        : "border-zinc-700 bg-zinc-900 text-zinc-400"
                   }
                 `}
-              />
+              >
 
-              {statusLabel}
+                <span
+                  className={`
+                    h-1.5
+                    w-1.5
+                    rounded-full
 
-            </div>
-          )}
+                    ${
+                      isOnline
+                        ? "bg-emerald-400"
+                        : isMaintenance
+                          ? "bg-amber-400"
+                          : "bg-zinc-500"
+                    }
+                  `}
+                />
+
+                {statusLabel}
+
+              </div>
+
+            )}
 
         </div>
+
 
         {/* ==================================================
             INITIAL LOADING
         ================================================== */}
 
         {loading && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-8 text-center">
+
+          <div
+            className="
+              rounded-xl
+              border
+              border-zinc-800
+              bg-zinc-950
+              p-8
+              text-center
+            "
+          >
 
             <RefreshCw
-              className="mx-auto animate-spin text-zinc-500"
+              className="
+                mx-auto
+                animate-spin
+                text-zinc-500
+              "
               size={22}
             />
 
-            <p className="mt-3 text-sm text-zinc-500">
-              Loading device information...
+            <p
+              className="
+                mt-3
+                text-sm
+                text-zinc-500
+              "
+            >
+              Loading device
+              information...
             </p>
 
           </div>
+
         )}
+
 
         {/* ==================================================
             ERROR
         ================================================== */}
 
-        {!loading && error && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">
+        {!loading &&
+          error && (
 
-            <p className="text-sm font-semibold text-red-400">
-              Unable to load device
-            </p>
-
-            <p className="mt-1 text-sm text-zinc-500">
-              {error}
-            </p>
-
-            <button
-              type="button"
-              onClick={() =>
-                void loadDevice(true)
-              }
+            <div
               className="
-                mt-4
-                inline-flex
-                items-center
-                gap-2
-                rounded-lg
+                rounded-xl
                 border
-                border-zinc-800
-                bg-zinc-900
-                px-3
-                py-2
-                text-sm
-                font-medium
-                text-zinc-300
-                transition
-                hover:bg-zinc-800
+                border-red-500/20
+                bg-red-500/5
+                p-6
               "
             >
-              <RefreshCw size={15} />
-              Retry
-            </button>
 
-          </div>
-        )}
+              <p
+                className="
+                  text-sm
+                  font-semibold
+                  text-red-400
+                "
+              >
+                Unable to load
+                device
+              </p>
+
+              <p
+                className="
+                  mt-1
+                  text-sm
+                  text-zinc-500
+                "
+              >
+                {error}
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void loadDevice(
+                    true,
+                  )
+                }
+                className="
+                  mt-4
+                  inline-flex
+                  items-center
+                  gap-2
+                  rounded-lg
+                  border
+                  border-zinc-800
+                  bg-zinc-900
+                  px-3
+                  py-2
+                  text-sm
+                  font-medium
+                  text-zinc-300
+                  transition
+                  hover:bg-zinc-800
+                "
+              >
+
+                <RefreshCw
+                  size={15}
+                />
+
+                Retry
+
+              </button>
+
+            </div>
+
+          )}
+
 
         {!loading &&
           !error &&
           device && (
+
             <>
+
 
               {/* ==================================================
                   OVERVIEW
               ================================================== */}
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div
+                className="
+                  grid
+                  gap-4
+                  md:grid-cols-2
+                  xl:grid-cols-4
+                "
+              >
+
 
                 {/* DEVICE TYPE */}
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+                <div
+                  className="
+                    rounded-xl
+                    border
+                    border-zinc-800
+                    bg-zinc-950
+                    p-5
+                  "
+                >
 
-                  <div className="flex items-center gap-3">
+                  <div
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                    "
+                  >
 
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-900 text-zinc-400">
-                      <Cpu size={18} />
+                    <div
+                      className="
+                        flex
+                        h-9
+                        w-9
+                        items-center
+                        justify-center
+                        rounded-lg
+                        bg-zinc-900
+                        text-zinc-400
+                      "
+                    >
+                      <Cpu
+                        size={18}
+                      />
                     </div>
 
                     <div>
 
-                      <p className="text-xs text-zinc-500">
+                      <p
+                        className="
+                          text-xs
+                          text-zinc-500
+                        "
+                      >
                         Device type
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-zinc-200">
+                      <p
+                        className="
+                          mt-1
+                          text-sm
+                          font-semibold
+                          text-zinc-200
+                        "
+                      >
                         {device.device_type}
                       </p>
 
@@ -565,11 +898,26 @@ function DeviceDetailPage() {
 
                 </div>
 
+
                 {/* CURRENT STATUS */}
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+                <div
+                  className="
+                    rounded-xl
+                    border
+                    border-zinc-800
+                    bg-zinc-950
+                    p-5
+                  "
+                >
 
-                  <div className="flex items-center gap-3">
+                  <div
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                    "
+                  >
 
                     <div
                       className={`
@@ -588,12 +936,22 @@ function DeviceDetailPage() {
                         }
                       `}
                     >
-                      <Radio size={18} />
+
+                      <Radio
+                        size={18}
+                      />
+
                     </div>
+
 
                     <div>
 
-                      <p className="text-xs text-zinc-500">
+                      <p
+                        className="
+                          text-xs
+                          text-zinc-500
+                        "
+                      >
                         Current status
                       </p>
 
@@ -619,23 +977,66 @@ function DeviceDetailPage() {
 
                 </div>
 
+
                 {/* ACTIVE */}
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+                <div
+                  className="
+                    rounded-xl
+                    border
+                    border-zinc-800
+                    bg-zinc-950
+                    p-5
+                  "
+                >
 
-                  <div className="flex items-center gap-3">
+                  <div
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                    "
+                  >
 
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-900 text-zinc-400">
-                      <Server size={18} />
+                    <div
+                      className="
+                        flex
+                        h-9
+                        w-9
+                        items-center
+                        justify-center
+                        rounded-lg
+                        bg-zinc-900
+                        text-zinc-400
+                      "
+                    >
+
+                      <Server
+                        size={18}
+                      />
+
                     </div>
+
 
                     <div>
 
-                      <p className="text-xs text-zinc-500">
+                      <p
+                        className="
+                          text-xs
+                          text-zinc-500
+                        "
+                      >
                         Active
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-zinc-200">
+                      <p
+                        className="
+                          mt-1
+                          text-sm
+                          font-semibold
+                          text-zinc-200
+                        "
+                      >
                         {device.is_active
                           ? "Yes"
                           : "No"}
@@ -647,93 +1048,336 @@ function DeviceDetailPage() {
 
                 </div>
 
+
+                {/* DEVICE HEALTH */}
+
+                <div
+                  className={`
+                    rounded-xl
+                    border
+                    p-5
+
+                    ${
+                      healthStatus ===
+                      "healthy"
+                        ? "border-emerald-500/20 bg-emerald-500/5"
+                        : healthStatus ===
+                            "warning"
+                          ? "border-amber-500/20 bg-amber-500/5"
+                          : healthStatus ===
+                              "critical"
+                            ? "border-red-500/20 bg-red-500/5"
+                            : "border-zinc-800 bg-zinc-950"
+                    }
+                  `}
+                >
+
+                  <div
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                    "
+                  >
+
+                    <div
+                      className="
+                        flex
+                        h-9
+                        w-9
+                        items-center
+                        justify-center
+                        rounded-lg
+                        bg-zinc-900
+                      "
+                    >
+
+                      <Activity
+                        size={18}
+                        className={
+                          healthIconClass
+                        }
+                      />
+
+                    </div>
+
+
+                    <div
+                      className="
+                        min-w-0
+                      "
+                    >
+
+                      <p
+                        className="
+                          text-xs
+                          text-zinc-500
+                        "
+                      >
+                        Device health
+                      </p>
+
+                      <p
+                        className={`
+                          mt-1
+                          text-sm
+                          font-semibold
+                          ${healthTextClass}
+                        `}
+                      >
+
+                        {healthLoading &&
+                        !health
+                          ? "Checking..."
+                          : healthLabel}
+
+                      </p>
+
+                    </div>
+
+                  </div>
+
+
+                  {health?.reason && (
+
+                    <p
+                      className="
+                        mt-3
+                        text-xs
+                        leading-5
+                        text-zinc-500
+                      "
+                    >
+                      {health.reason}
+                    </p>
+
+                  )}
+
+
+                  {healthError && (
+
+                    <p
+                      className="
+                        mt-3
+                        text-xs
+                        text-red-400
+                      "
+                    >
+                      {healthError}
+                    </p>
+
+                  )}
+
+                </div>
+
               </div>
 
+
               {/* ==================================================
-                  TELEMETRY
+                  LIVE TELEMETRY
               ================================================== */}
 
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950">
+              <div
+                className="
+                  rounded-xl
+                  border
+                  border-zinc-800
+                  bg-zinc-950
+                "
+              >
 
-                <div className="border-b border-zinc-800 px-6 py-5">
+                <div
+                  className="
+                    border-b
+                    border-zinc-800
+                    px-6
+                    py-5
+                  "
+                >
 
-                  <div className="flex items-center justify-between">
+                  <div
+                    className="
+                      flex
+                      items-center
+                      justify-between
+                    "
+                  >
 
                     <div>
 
-                      <h2 className="text-sm font-semibold text-zinc-100">
+                      <h2
+                        className="
+                          text-sm
+                          font-semibold
+                          text-zinc-100
+                        "
+                      >
                         Live telemetry
                       </h2>
 
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Latest sensor readings reported by this device.
+                      <p
+                        className="
+                          mt-1
+                          text-xs
+                          text-zinc-500
+                        "
+                      >
+                        Latest sensor
+                        readings reported
+                        by this device.
                       </p>
 
                     </div>
 
                     <Activity
                       size={18}
-                      className="text-emerald-400"
+                      className="
+                        text-emerald-400
+                      "
                     />
 
                   </div>
 
                 </div>
 
-                <div className="p-6">
+
+                <div
+                  className="p-6"
+                >
 
                   {telemetryLoading &&
                     !telemetry && (
-                      <div className="flex items-center gap-3 text-sm text-zinc-500">
+
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                          text-sm
+                          text-zinc-500
+                        "
+                      >
+
                         <RefreshCw
                           size={16}
-                          className="animate-spin"
+                          className="
+                            animate-spin
+                          "
                         />
 
                         Loading telemetry...
+
                       </div>
+
                     )}
+
 
                   {!telemetryLoading &&
                     !telemetry && (
-                      <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5">
 
-                        <p className="text-sm font-medium text-zinc-300">
-                          No telemetry available
+                      <div
+                        className="
+                          rounded-lg
+                          border
+                          border-zinc-800
+                          bg-zinc-900/40
+                          p-5
+                        "
+                      >
+
+                        <p
+                          className="
+                            text-sm
+                            font-medium
+                            text-zinc-300
+                          "
+                        >
+                          No telemetry
+                          available
                         </p>
 
-                        <p className="mt-1 text-xs text-zinc-500">
-                          This device has not reported any sensor readings yet.
+                        <p
+                          className="
+                            mt-1
+                            text-xs
+                            text-zinc-500
+                          "
+                        >
+                          This device
+                          has not reported
+                          any sensor
+                          readings yet.
                         </p>
 
                       </div>
+
                     )}
 
+
                   {telemetry && (
+
                     <>
 
-                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div
+                        className="
+                          grid
+                          gap-4
+                          sm:grid-cols-2
+                          lg:grid-cols-4
+                        "
+                      >
+
 
                         {/* TEMPERATURE */}
 
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+                        <div
+                          className="
+                            rounded-lg
+                            border
+                            border-zinc-800
+                            bg-zinc-900/40
+                            p-4
+                          "
+                        >
 
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="
+                              flex
+                              items-center
+                              gap-2
+                            "
+                          >
 
                             <Thermometer
                               size={16}
-                              className="text-zinc-500"
+                              className="
+                                text-zinc-500
+                              "
                             />
 
-                            <p className="text-xs text-zinc-500">
+                            <p
+                              className="
+                                text-xs
+                                text-zinc-500
+                              "
+                            >
                               Temperature
                             </p>
 
                           </div>
 
-                          <p className="mt-3 text-2xl font-semibold text-zinc-100">
 
-                            {telemetry.temperature !== null
+                          <p
+                            className="
+                              mt-3
+                              text-2xl
+                              font-semibold
+                              text-zinc-100
+                            "
+                          >
+
+                            {telemetry.temperature !==
+                            null
                               ? `${telemetry.temperature.toFixed(1)} °C`
                               : "—"}
 
@@ -741,54 +1385,126 @@ function DeviceDetailPage() {
 
                         </div>
 
+
                         {/* SENSOR 1 */}
 
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+                        <div
+                          className="
+                            rounded-lg
+                            border
+                            border-zinc-800
+                            bg-zinc-900/40
+                            p-4
+                          "
+                        >
 
-                          <p className="text-xs text-zinc-500">
+                          <p
+                            className="
+                              text-xs
+                              text-zinc-500
+                            "
+                          >
                             Sensor 1
                           </p>
 
-                          <p className="mt-3 text-2xl font-semibold text-zinc-100">
+                          <p
+                            className="
+                              mt-3
+                              text-2xl
+                              font-semibold
+                              text-zinc-100
+                            "
+                          >
 
-                            {telemetry.sensor_1 !== null
-                              ? telemetry.sensor_1.toFixed(1)
+                            {telemetry.sensor_1 !==
+                            null
+                              ? telemetry.sensor_1.toFixed(
+                                  1,
+                                )
                               : "—"}
 
                           </p>
 
                         </div>
+
 
                         {/* SENSOR 2 */}
 
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+                        <div
+                          className="
+                            rounded-lg
+                            border
+                            border-zinc-800
+                            bg-zinc-900/40
+                            p-4
+                          "
+                        >
 
-                          <p className="text-xs text-zinc-500">
+                          <p
+                            className="
+                              text-xs
+                              text-zinc-500
+                            "
+                          >
                             Sensor 2
                           </p>
 
-                          <p className="mt-3 text-2xl font-semibold text-zinc-100">
+                          <p
+                            className="
+                              mt-3
+                              text-2xl
+                              font-semibold
+                              text-zinc-100
+                            "
+                          >
 
-                            {telemetry.sensor_2 !== null
-                              ? telemetry.sensor_2.toFixed(1)
+                            {telemetry.sensor_2 !==
+                            null
+                              ? telemetry.sensor_2.toFixed(
+                                  1,
+                                )
                               : "—"}
 
                           </p>
 
                         </div>
 
+
                         {/* SENSOR 3 */}
 
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+                        <div
+                          className="
+                            rounded-lg
+                            border
+                            border-zinc-800
+                            bg-zinc-900/40
+                            p-4
+                          "
+                        >
 
-                          <p className="text-xs text-zinc-500">
+                          <p
+                            className="
+                              text-xs
+                              text-zinc-500
+                            "
+                          >
                             Sensor 3
                           </p>
 
-                          <p className="mt-3 text-2xl font-semibold text-zinc-100">
+                          <p
+                            className="
+                              mt-3
+                              text-2xl
+                              font-semibold
+                              text-zinc-100
+                            "
+                          >
 
-                            {telemetry.sensor_3 !== null
-                              ? telemetry.sensor_3.toFixed(1)
+                            {telemetry.sensor_3 !==
+                            null
+                              ? telemetry.sensor_3.toFixed(
+                                  1,
+                                )
                               : "—"}
 
                           </p>
@@ -797,13 +1513,35 @@ function DeviceDetailPage() {
 
                       </div>
 
-                      <div className="mt-5 flex items-center justify-between border-t border-zinc-800 pt-4">
 
-                        <p className="text-xs text-zinc-500">
-                          Last telemetry update
+                      <div
+                        className="
+                          mt-5
+                          flex
+                          items-center
+                          justify-between
+                          border-t
+                          border-zinc-800
+                          pt-4
+                        "
+                      >
+
+                        <p
+                          className="
+                            text-xs
+                            text-zinc-500
+                          "
+                        >
+                          Last telemetry
+                          update
                         </p>
 
-                        <p className="text-xs text-zinc-400">
+                        <p
+                          className="
+                            text-xs
+                            text-zinc-400
+                          "
+                        >
                           {formatTelemetryTime(
                             telemetry.created_at,
                           )}
@@ -812,358 +1550,752 @@ function DeviceDetailPage() {
                       </div>
 
                     </>
+
                   )}
+
 
                   {telemetryError &&
                     telemetry && (
-                      <p className="mt-3 text-xs text-zinc-600">
+
+                      <p
+                        className="
+                          mt-3
+                          text-xs
+                          text-zinc-600
+                        "
+                      >
                         {telemetryError}
                       </p>
+
                     )}
 
                 </div>
 
               </div>
 
-{/* ==================================================
-    TELEMETRY HISTORY
-================================================== */}
 
-<div className="rounded-xl border border-zinc-800 bg-zinc-950">
+              {/* ==================================================
+                  TELEMETRY HISTORY
+              ================================================== */}
 
-  <div className="border-b border-zinc-800 px-6 py-5">
+              <div
+                className="
+                  rounded-xl
+                  border
+                  border-zinc-800
+                  bg-zinc-950
+                "
+              >
 
-    <div className="flex items-center justify-between">
+                <div
+                  className="
+                    border-b
+                    border-zinc-800
+                    px-6
+                    py-5
+                  "
+                >
 
-      <div>
+                  <div
+                    className="
+                      flex
+                      items-center
+                      justify-between
+                    "
+                  >
 
-        <h2 className="text-sm font-semibold text-zinc-100">
-          Telemetry history
-        </h2>
+                    <div>
 
-        <p className="mt-1 text-xs text-zinc-500">
-          Recent sensor readings reported by this device.
-        </p>
+                      <h2
+                        className="
+                          text-sm
+                          font-semibold
+                          text-zinc-100
+                        "
+                      >
+                        Telemetry history
+                      </h2>
 
-      </div>
+                      <p
+                        className="
+                          mt-1
+                          text-xs
+                          text-zinc-500
+                        "
+                      >
+                        Recent sensor
+                        readings reported
+                        by this device.
+                      </p>
 
-      <Activity
-        size={18}
-        className="text-emerald-400"
-      />
+                    </div>
 
-    </div>
+                    <Activity
+                      size={18}
+                      className="
+                        text-emerald-400
+                      "
+                    />
 
-  </div>
+                  </div>
 
-  <div className="p-6">
+                </div>
 
-    {historyLoading &&
-      telemetryHistory.length === 0 && (
-        <div className="flex items-center gap-3 text-sm text-zinc-500">
 
-          <RefreshCw
-            size={16}
-            className="animate-spin"
-          />
+                <div
+                  className="p-6"
+                >
 
-          Loading telemetry history...
+                  {historyLoading &&
+                    telemetryHistory.length ===
+                      0 && (
 
-        </div>
-      )}
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                          text-sm
+                          text-zinc-500
+                        "
+                      >
 
-    {!historyLoading &&
-      telemetryHistory.length === 0 && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5">
+                        <RefreshCw
+                          size={16}
+                          className="
+                            animate-spin
+                          "
+                        />
 
-          <p className="text-sm font-medium text-zinc-300">
-            No history available
-          </p>
+                        Loading telemetry
+                        history...
 
-          <p className="mt-1 text-xs text-zinc-500">
-            Historical sensor readings will appear here
-            once the device starts reporting telemetry.
-          </p>
+                      </div>
 
-        </div>
-      )}
+                    )}
 
-    {telemetryHistory.length > 0 && (
-      <div className="h-[320px] w-full">
 
-        <ResponsiveContainer
-          width="100%"
-          height="100%"
-        >
+                  {!historyLoading &&
+                    telemetryHistory.length ===
+                      0 && (
 
-          <LineChart
-            data={chartData}
-            margin={{
-              top: 10,
-              right: 10,
-              left: -20,
-              bottom: 5,
-            }}
-          >
+                      <div
+                        className="
+                          rounded-lg
+                          border
+                          border-zinc-800
+                          bg-zinc-900/40
+                          p-5
+                        "
+                      >
 
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="rgba(255,255,255,0.06)"
-            />
+                        <p
+                          className="
+                            text-sm
+                            font-medium
+                            text-zinc-300
+                          "
+                        >
+                          No history
+                          available
+                        </p>
 
-            <XAxis
-              dataKey="time"
-              tick={{
-                fill: "#71717a",
-                fontSize: 11,
-              }}
-              tickLine={false}
-              axisLine={false}
-            />
+                        <p
+                          className="
+                            mt-1
+                            text-xs
+                            text-zinc-500
+                          "
+                        >
+                          Historical sensor
+                          readings will
+                          appear here once
+                          the device starts
+                          reporting telemetry.
+                        </p>
 
-            <YAxis
-              tick={{
-                fill: "#71717a",
-                fontSize: 11,
-              }}
-              tickLine={false}
-              axisLine={false}
-            />
+                      </div>
 
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#09090b",
-                border: "1px solid #27272a",
-                borderRadius: "8px",
-                color: "#f4f4f5",
-              }}
-              labelStyle={{
-                color: "#a1a1aa",
-              }}
-            />
+                    )}
 
-            <Line
-              type="monotone"
-              dataKey="temperature"
-              name="Temperature"
-              stroke="#34d399"
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-            />
 
-            <Line
-              type="monotone"
-              dataKey="sensor1"
-              name="Sensor 1"
-              stroke="#60a5fa"
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-            />
+                  {telemetryHistory.length >
+                    0 && (
 
-            <Line
-              type="monotone"
-              dataKey="sensor2"
-              name="Sensor 2"
-              stroke="#f59e0b"
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-            />
+                    <div
+                      className="
+                        h-[320px]
+                        w-full
+                      "
+                    >
 
-            <Line
-              type="monotone"
-              dataKey="sensor3"
-              name="Sensor 3"
-              stroke="#a78bfa"
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-            />
+                      <ResponsiveContainer
+                        width="100%"
+                        height="100%"
+                      >
 
-          </LineChart>
+                        <LineChart
+                          data={chartData}
+                          margin={{
+                            top: 10,
+                            right: 10,
+                            left: -20,
+                            bottom: 5,
+                          }}
+                        >
 
-        </ResponsiveContainer>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="rgba(255,255,255,0.06)"
+                          />
 
-      </div>
-    )}
+                          <XAxis
+                            dataKey="time"
+                            tick={{
+                              fill: "#71717a",
+                              fontSize: 11,
+                            }}
+                            tickLine={false}
+                            axisLine={false}
+                          />
 
-  </div>
+                          <YAxis
+                            tick={{
+                              fill: "#71717a",
+                              fontSize: 11,
+                            }}
+                            tickLine={false}
+                            axisLine={false}
+                          />
 
-</div>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor:
+                                "#09090b",
+                              border:
+                                "1px solid #27272a",
+                              borderRadius:
+                                "8px",
+                              color:
+                                "#f4f4f5",
+                            }}
+                            labelStyle={{
+                              color:
+                                "#a1a1aa",
+                            }}
+                          />
 
-{/* Recent readings */}
 
-<div className="mt-8 border-t border-zinc-800 pt-6">
+                          <Line
+                            type="monotone"
+                            dataKey="temperature"
+                            name="Temperature"
+                            stroke="#34d399"
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                          />
 
-  <div className="mb-4">
-    <h3 className="text-sm font-semibold text-zinc-100">
-      Recent readings
-    </h3>
 
-    <p className="mt-1 text-xs text-zinc-500">
-      Latest telemetry records received from the device.
-    </p>
-  </div>
+                          <Line
+                            type="monotone"
+                            dataKey="sensor1"
+                            name="Sensor 1"
+                            stroke="#60a5fa"
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                          />
 
-  <div className="overflow-x-auto rounded-lg border border-zinc-800">
 
-    <table className="w-full text-left text-sm">
+                          <Line
+                            type="monotone"
+                            dataKey="sensor2"
+                            name="Sensor 2"
+                            stroke="#f59e0b"
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                          />
 
-      <thead className="border-b border-zinc-800 bg-zinc-900/60">
 
-        <tr>
-          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-            Time
-          </th>
+                          <Line
+                            type="monotone"
+                            dataKey="sensor3"
+                            name="Sensor 3"
+                            stroke="#a78bfa"
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                          />
 
-          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-            Temperature
-          </th>
+                        </LineChart>
 
-          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-            Sensor 1
-          </th>
+                      </ResponsiveContainer>
 
-          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-            Sensor 2
-          </th>
+                    </div>
 
-          <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-            Sensor 3
-          </th>
-        </tr>
+                  )}
 
-      </thead>
+                </div>
 
-      <tbody className="divide-y divide-zinc-800">
+              </div>
 
-        {[...telemetryHistory]
-          .reverse()
-          .slice(0, 10)
-          .map((reading) => (
 
-            <tr
-              key={reading.id}
-              className="transition-colors hover:bg-zinc-900/50"
-            >
+              {/* ==================================================
+                  RECENT READINGS
+              ================================================== */}
 
-              <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-zinc-400">
-                {new Date(
-                  reading.created_at,
-                ).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })}
-              </td>
+              <div
+                className="
+                  mt-8
+                  border-t
+                  border-zinc-800
+                  pt-6
+                "
+              >
 
-              <td className="px-4 py-3 text-zinc-200">
-                {reading.temperature !== null
-                  ? `${reading.temperature.toFixed(2)} °C`
-                  : "—"}
-              </td>
+                <div
+                  className="mb-4"
+                >
 
-              <td className="px-4 py-3 text-zinc-300">
-                {reading.sensor_1 !== null
-                  ? reading.sensor_1.toFixed(2)
-                  : "—"}
-              </td>
+                  <h3
+                    className="
+                      text-sm
+                      font-semibold
+                      text-zinc-100
+                    "
+                  >
+                    Recent readings
+                  </h3>
 
-              <td className="px-4 py-3 text-zinc-300">
-                {reading.sensor_2 !== null
-                  ? reading.sensor_2.toFixed(2)
-                  : "—"}
-              </td>
+                  <p
+                    className="
+                      mt-1
+                      text-xs
+                      text-zinc-500
+                    "
+                  >
+                    Latest telemetry
+                    records received
+                    from the device.
+                  </p>
 
-              <td className="px-4 py-3 text-zinc-300">
-                {reading.sensor_3 !== null
-                  ? reading.sensor_3.toFixed(2)
-                  : "—"}
-              </td>
+                </div>
 
-            </tr>
 
-          ))}
+                <div
+                  className="
+                    overflow-x-auto
+                    rounded-lg
+                    border
+                    border-zinc-800
+                  "
+                >
 
-      </tbody>
+                  <table
+                    className="
+                      w-full
+                      text-left
+                      text-sm
+                    "
+                  >
 
-    </table>
+                    <thead
+                      className="
+                        border-b
+                        border-zinc-800
+                        bg-zinc-900/60
+                      "
+                    >
 
-  </div>
+                      <tr>
 
-</div>
+                        <th
+                          className="
+                            px-4
+                            py-3
+                            text-xs
+                            font-medium
+                            text-zinc-500
+                          "
+                        >
+                          Time
+                        </th>
+
+                        <th
+                          className="
+                            px-4
+                            py-3
+                            text-xs
+                            font-medium
+                            text-zinc-500
+                          "
+                        >
+                          Temperature
+                        </th>
+
+                        <th
+                          className="
+                            px-4
+                            py-3
+                            text-xs
+                            font-medium
+                            text-zinc-500
+                          "
+                        >
+                          Sensor 1
+                        </th>
+
+                        <th
+                          className="
+                            px-4
+                            py-3
+                            text-xs
+                            font-medium
+                            text-zinc-500
+                          "
+                        >
+                          Sensor 2
+                        </th>
+
+                        <th
+                          className="
+                            px-4
+                            py-3
+                            text-xs
+                            font-medium
+                            text-zinc-500
+                          "
+                        >
+                          Sensor 3
+                        </th>
+
+                      </tr>
+
+                    </thead>
+
+
+                    <tbody
+                      className="
+                        divide-y
+                        divide-zinc-800
+                      "
+                    >
+
+                      {[...telemetryHistory]
+                        .reverse()
+                        .slice(
+                          0,
+                          10,
+                        )
+                        .map(
+                          (
+                            reading,
+                          ) => (
+
+                            <tr
+                              key={
+                                reading.id
+                              }
+                              className="
+                                transition-colors
+                                hover:bg-zinc-900/50
+                              "
+                            >
+
+                              <td
+                                className="
+                                  whitespace-nowrap
+                                  px-4
+                                  py-3
+                                  font-mono
+                                  text-xs
+                                  text-zinc-400
+                                "
+                              >
+                                {new Date(
+                                  reading.created_at,
+                                ).toLocaleTimeString(
+                                  [],
+                                  {
+                                    hour:
+                                      "2-digit",
+                                    minute:
+                                      "2-digit",
+                                    second:
+                                      "2-digit",
+                                  },
+                                )}
+                              </td>
+
+
+                              <td
+                                className="
+                                  px-4
+                                  py-3
+                                  text-zinc-200
+                                "
+                              >
+                                {reading.temperature !==
+                                null
+                                  ? `${reading.temperature.toFixed(2)} °C`
+                                  : "—"}
+                              </td>
+
+
+                              <td
+                                className="
+                                  px-4
+                                  py-3
+                                  text-zinc-300
+                                "
+                              >
+                                {reading.sensor_1 !==
+                                null
+                                  ? reading.sensor_1.toFixed(
+                                      2,
+                                    )
+                                  : "—"}
+                              </td>
+
+
+                              <td
+                                className="
+                                  px-4
+                                  py-3
+                                  text-zinc-300
+                                "
+                              >
+                                {reading.sensor_2 !==
+                                null
+                                  ? reading.sensor_2.toFixed(
+                                      2,
+                                    )
+                                  : "—"}
+                              </td>
+
+
+                              <td
+                                className="
+                                  px-4
+                                  py-3
+                                  text-zinc-300
+                                "
+                              >
+                                {reading.sensor_3 !==
+                                null
+                                  ? reading.sensor_3.toFixed(
+                                      2,
+                                    )
+                                  : "—"}
+                              </td>
+
+                            </tr>
+
+                          ),
+                        )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+
+              </div>
+
 
               {/* ==================================================
                   INFORMATION + CONNECTIVITY
               ================================================== */}
 
-              <div className="grid gap-6 lg:grid-cols-2">
+              <div
+                className="
+                  grid
+                  gap-6
+                  lg:grid-cols-2
+                "
+              >
+
 
                 {/* DEVICE INFORMATION */}
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950">
+                <div
+                  className="
+                    rounded-xl
+                    border
+                    border-zinc-800
+                    bg-zinc-950
+                  "
+                >
 
-                  <div className="border-b border-zinc-800 px-6 py-5">
+                  <div
+                    className="
+                      border-b
+                      border-zinc-800
+                      px-6
+                      py-5
+                    "
+                  >
 
-                    <h2 className="text-sm font-semibold text-zinc-100">
+                    <h2
+                      className="
+                        text-sm
+                        font-semibold
+                        text-zinc-100
+                      "
+                    >
                       Device information
                     </h2>
 
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Core information registered in SKape OS.
+                    <p
+                      className="
+                        mt-1
+                        text-xs
+                        text-zinc-500
+                      "
+                    >
+                      Core information
+                      registered in
+                      SKape OS.
                     </p>
 
                   </div>
 
-                  <div className="divide-y divide-zinc-800/70">
 
-                    <div className="flex items-center justify-between px-6 py-4">
+                  <div
+                    className="
+                      divide-y
+                      divide-zinc-800/70
+                    "
+                  >
 
-                      <span className="text-sm text-zinc-500">
+                    <div
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        px-6
+                        py-4
+                      "
+                    >
+
+                      <span
+                        className="
+                          text-sm
+                          text-zinc-500
+                        "
+                      >
                         Device ID
                       </span>
 
-                      <span className="font-mono text-sm text-zinc-300">
+                      <span
+                        className="
+                          font-mono
+                          text-sm
+                          text-zinc-300
+                        "
+                      >
                         {device.device_id}
                       </span>
 
                     </div>
 
-                    <div className="flex items-center justify-between px-6 py-4">
 
-                      <span className="text-sm text-zinc-500">
+                    <div
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        px-6
+                        py-4
+                      "
+                    >
+
+                      <span
+                        className="
+                          text-sm
+                          text-zinc-500
+                        "
+                      >
                         Type
                       </span>
 
-                      <span className="text-sm text-zinc-300">
+                      <span
+                        className="
+                          text-sm
+                          text-zinc-300
+                        "
+                      >
                         {device.device_type}
                       </span>
 
                     </div>
 
-                    <div className="flex items-center justify-between px-6 py-4">
 
-                      <span className="text-sm text-zinc-500">
+                    <div
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        px-6
+                        py-4
+                      "
+                    >
+
+                      <span
+                        className="
+                          text-sm
+                          text-zinc-500
+                        "
+                      >
                         Organization
                       </span>
 
-                      <span className="text-sm text-zinc-300">
+                      <span
+                        className="
+                          text-sm
+                          text-zinc-300
+                        "
+                      >
                         #{device.organization_id}
                       </span>
 
                     </div>
 
-                    <div className="flex items-center justify-between px-6 py-4">
 
-                      <span className="text-sm text-zinc-500">
+                    <div
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        px-6
+                        py-4
+                      "
+                    >
+
+                      <span
+                        className="
+                          text-sm
+                          text-zinc-500
+                        "
+                      >
                         Linked asset
                       </span>
 
-                      <span className="inline-flex items-center gap-2 text-sm text-zinc-300">
+                      <span
+                        className="
+                          inline-flex
+                          items-center
+                          gap-2
+                          text-sm
+                          text-zinc-300
+                        "
+                      >
 
-                        <Link2 size={14} />
+                        <Link2
+                          size={14}
+                        />
 
                         {device.asset_id
                           ? `Asset #${device.asset_id}`
@@ -1177,23 +2309,61 @@ function DeviceDetailPage() {
 
                 </div>
 
+
                 {/* CONNECTIVITY */}
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950">
+                <div
+                  className="
+                    rounded-xl
+                    border
+                    border-zinc-800
+                    bg-zinc-950
+                  "
+                >
 
-                  <div className="border-b border-zinc-800 px-6 py-5">
+                  <div
+                    className="
+                      border-b
+                      border-zinc-800
+                      px-6
+                      py-5
+                    "
+                  >
 
-                    <h2 className="text-sm font-semibold text-zinc-100">
+                    <h2
+                      className="
+                        text-sm
+                        font-semibold
+                        text-zinc-100
+                      "
+                    >
                       Connectivity
                     </h2>
 
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Current device communication information.
+                    <p
+                      className="
+                        mt-1
+                        text-xs
+                        text-zinc-500
+                      "
+                    >
+                      Current device
+                      communication
+                      information.
                     </p>
 
                   </div>
 
-                  <div className="space-y-5 p-6">
+
+                  <div
+                    className="
+                      space-y-5
+                      p-6
+                    "
+                  >
+
+
+                    {/* CONNECTION STATUS */}
 
                     <div
                       className={`
@@ -1209,7 +2379,13 @@ function DeviceDetailPage() {
                       `}
                     >
 
-                      <div className="flex items-center gap-3">
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                        "
+                      >
 
                         <Radio
                           size={18}
@@ -1222,11 +2398,24 @@ function DeviceDetailPage() {
 
                         <div>
 
-                          <p className="text-sm font-semibold text-zinc-200">
-                            Connection status
+                          <p
+                            className="
+                              text-sm
+                              font-semibold
+                              text-zinc-200
+                            "
+                          >
+                            Connection
+                            status
                           </p>
 
-                          <p className="mt-1 text-xs text-zinc-500">
+                          <p
+                            className="
+                              mt-1
+                              text-xs
+                              text-zinc-500
+                            "
+                          >
 
                             {isOnline
                               ? "Device is currently connected and sending heartbeats."
@@ -1240,20 +2429,42 @@ function DeviceDetailPage() {
 
                     </div>
 
-                    <div className="flex items-center gap-3">
+
+                    {/* LAST SEEN */}
+
+                    <div
+                      className="
+                        flex
+                        items-center
+                        gap-3
+                      "
+                    >
 
                       <MapPin
                         size={17}
-                        className="text-zinc-500"
+                        className="
+                          text-zinc-500
+                        "
                       />
 
                       <div>
 
-                        <p className="text-xs text-zinc-500">
+                        <p
+                          className="
+                            text-xs
+                            text-zinc-500
+                          "
+                        >
                           Last seen
                         </p>
 
-                        <p className="mt-1 text-sm text-zinc-300">
+                        <p
+                          className="
+                            mt-1
+                            text-sm
+                            text-zinc-300
+                          "
+                        >
                           {formatDate(
                             device.last_seen_at,
                           )}
@@ -1263,20 +2474,42 @@ function DeviceDetailPage() {
 
                     </div>
 
-                    <div className="flex items-center gap-3">
+
+                    {/* REGISTERED */}
+
+                    <div
+                      className="
+                        flex
+                        items-center
+                        gap-3
+                      "
+                    >
 
                       <Database
                         size={17}
-                        className="text-zinc-500"
+                        className="
+                          text-zinc-500
+                        "
                       />
 
                       <div>
 
-                        <p className="text-xs text-zinc-500">
+                        <p
+                          className="
+                            text-xs
+                            text-zinc-500
+                          "
+                        >
                           Registered
                         </p>
 
-                        <p className="mt-1 text-sm text-zinc-300">
+                        <p
+                          className="
+                            mt-1
+                            text-sm
+                            text-zinc-300
+                          "
+                        >
                           {formatDate(
                             device.created_at,
                           )}
@@ -1293,11 +2526,14 @@ function DeviceDetailPage() {
               </div>
 
             </>
+
           )}
 
       </section>
+
     </DashboardLayout>
   );
 }
+
 
 export default DeviceDetailPage;
