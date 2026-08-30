@@ -1,4 +1,5 @@
 import {
+  Bell,
   Boxes,
   Building2,
   CheckSquare,
@@ -37,6 +38,11 @@ const workspaceNavigation: NavigationItem[] = [
     label: "Devices",
     path: "/devices",
     icon: Cpu,
+  },
+  {
+    label: "Alerts",
+    path: "/alerts",
+    icon: Bell,
   },
   {
     label: "Assets",

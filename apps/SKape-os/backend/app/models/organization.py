@@ -80,3 +80,9 @@ class Organization(Base):
     back_populates="organization",
     cascade="all, delete-orphan"
 )
+
+    alerts = relationship(
+    "Alert",
+    back_populates="organization",
+    cascade="all, delete-orphan",
+)

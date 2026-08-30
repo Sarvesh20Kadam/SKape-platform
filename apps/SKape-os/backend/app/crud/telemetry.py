@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.telemetry import DeviceTelemetry
 from app.models.device import Device
 from app.schemas.telemetry import TelemetryCreate
+from app.services.alert_engine import evaluate_telemetry_alerts
 
 
 def create_telemetry(
@@ -21,6 +22,12 @@ def create_telemetry(
     db.add(db_telemetry)
     db.commit()
     db.refresh(db_telemetry)
+
+    evaluate_telemetry_alerts(
+    db=db,
+    device=device,
+    telemetry=db_telemetry,
+)
 
     return db_telemetry
 

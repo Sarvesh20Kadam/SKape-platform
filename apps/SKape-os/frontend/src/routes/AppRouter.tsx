@@ -15,6 +15,7 @@ import TaskDetailPage from "../pages/TaskDetailPage";
 import AssetsPage from "../pages/AssetsPage";
 import DevicesPage from "../pages/DevicesPage";
 import DeviceDetailPage from "../pages/DeviceDetailPage";
+import AlertsPage from "../pages/AlertsPage";
 
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -91,6 +92,15 @@ function AppRouter() {
           </ProtectedRoute>
   }
   />
+
+       <Route
+         path="/alerts"
+         element={
+          <ProtectedRoute>
+            <AlertsPage />
+         </ProtectedRoute>
+        }
+      />
       
       <Route
         path="/devices/:deviceId"

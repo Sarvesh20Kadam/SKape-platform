@@ -6,6 +6,7 @@ from sqlalchemy.sql import func
 from app.crud.activity import log_activity
 from app.models.device import Device
 from app.schemas.device import DeviceCreate, DeviceUpdate
+from app.models.alert import Alert
 
 
 def create_device(
@@ -168,9 +169,28 @@ def heartbeat_device(
     if device is None:
         return None
 
+    was_offline = device.status == "offline"
+
     device.status = "online"
     device.last_seen_at = func.now()
     device.is_active = True
+
+    db.flush()
+
+    if was_offline:
+        active_alerts = (
+            db.query(Alert)
+            .filter(
+                Alert.device_id == device.id,
+                Alert.alert_type == "device_offline",
+                Alert.is_resolved.is_(False),
+            )
+            .all()
+        )
+
+        for alert in active_alerts:
+            alert.is_resolved = True
+            alert.resolved_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(device)
@@ -221,6 +241,32 @@ def mark_stale_devices_offline(
                 f"{device.device_id} marked OFFLINE "
                 f"(last heartbeat {age_seconds:.1f}s ago)"
             )
+
+            existing_alert = (
+                db.query(Alert)
+                .filter(
+                    Alert.device_id == device.id,
+                    Alert.alert_type == "device_offline",
+                    Alert.is_resolved.is_(False),
+                )
+                .first()
+            )
+
+            if existing_alert is None:
+                offline_alert = Alert(
+                    device_id=device.id,
+                    organization_id=device.organization_id,
+                    severity="critical",
+                    alert_type="device_offline",
+                    title="Device Offline",
+                    message=(
+                        f"Device {device.device_id} has not "
+                        f"sent a heartbeat for "
+                        f"{age_seconds:.0f} seconds."
+                    ),
+                )
+
+                db.add(offline_alert)
 
     if stale_devices:
         db.commit()

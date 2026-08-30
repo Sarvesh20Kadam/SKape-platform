@@ -93,3 +93,9 @@ class Device(Base):
         back_populates="device",
         cascade="all, delete-orphan",
     )
+
+    alerts = relationship(
+    "Alert",
+    back_populates="device",
+    cascade="all, delete-orphan",
+)
