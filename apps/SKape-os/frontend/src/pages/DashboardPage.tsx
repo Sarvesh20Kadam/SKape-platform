@@ -5,6 +5,7 @@ import StatCard from "../components/dashboard/StatCard";
 import QuickActions from "../components/dashboard/QuickActions";
 import RecentProjects from "../components/dashboard/RecentProjects";
 import RecentActivity from "../components/dashboard/RecentActivity";
+import OperationsOverview from "../components/dashboard/OperationsOverview";
 
 import { useDashboard } from "../hooks/useDashboard";
 
@@ -79,6 +80,12 @@ function DashboardPage() {
             value={stats?.completed_tasks ?? 0}
           />
         </section>
+
+                {/* =====================================================
+            OPERATIONS
+            ===================================================== */}
+
+           <OperationsOverview />
 
         {/* =====================================================
             QUICK ACTIONS

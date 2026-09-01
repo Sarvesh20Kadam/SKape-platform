@@ -1,12 +1,9 @@
 import {
-  Bell,
   Menu,
   Search,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { getAlerts } from "../../features/alerts/services/alert.service";
+import NotificationBell from "../Notifications/NotificationBell";
 
 type TopbarProps = {
   onMenuClick: () => void;
@@ -15,50 +12,6 @@ type TopbarProps = {
 function Topbar({
   onMenuClick,
 }: TopbarProps) {
-  const navigate = useNavigate();
-
-  const [openAlertCount, setOpenAlertCount] =
-    useState(0);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadOpenAlerts = async () => {
-      try {
-        const alerts = await getAlerts(
-          true,
-          50,
-        );
-
-        if (mounted) {
-          setOpenAlertCount(alerts.length);
-        }
-      } catch (error) {
-        console.error(
-          "Failed to load notification count:",
-          error,
-        );
-      }
-    };
-
-    void loadOpenAlerts();
-
-    const intervalId =
-      window.setInterval(
-        () => {
-          void loadOpenAlerts();
-        },
-        5000,
-      );
-
-    return () => {
-      mounted = false;
-      window.clearInterval(
-        intervalId,
-      );
-    };
-  }, []);
-
   return (
     <header className="sticky top-0 z-30 flex h-[72px] shrink-0 items-center justify-between border-b border-zinc-800/70 bg-zinc-950/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
 
@@ -99,7 +52,14 @@ function Topbar({
         <Search
           size={16}
           strokeWidth={1.8}
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600"
+          className="
+            pointer-events-none
+            absolute
+            left-3.5
+            top-1/2
+            -translate-y-1/2
+            text-zinc-600
+          "
         />
 
         <input
@@ -127,7 +87,25 @@ function Topbar({
           "
         />
 
-        <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-600 sm:block">
+        <span
+          className="
+            pointer-events-none
+            absolute
+            right-3
+            top-1/2
+            hidden
+            -translate-y-1/2
+            rounded
+            border
+            border-zinc-800
+            px-1.5
+            py-0.5
+            font-mono
+            text-[10px]
+            text-zinc-600
+            sm:block
+          "
+        >
           /
         </span>
 
@@ -149,70 +127,10 @@ function Topbar({
 
         {/* Notifications */}
 
-        <button
-          type="button"
-          aria-label={
-            openAlertCount > 0
-              ? `${openAlertCount} open alerts`
-              : "Notifications"
-          }
-          onClick={() =>
-            navigate("/alerts")
-          }
-          className="
-            relative
-            flex
-            h-9
-            w-9
-            items-center
-            justify-center
-            rounded-lg
-            border
-            border-transparent
-            text-zinc-500
-            transition-colors
-            hover:border-zinc-800
-            hover:bg-zinc-900
-            hover:text-zinc-200
-          "
-        >
+        <NotificationBell />
 
-          <Bell
-            size={17}
-            strokeWidth={1.8}
-          />
 
-          {openAlertCount > 0 && (
-            <span
-              aria-hidden="true"
-              className="
-                absolute
-                -right-1
-                -top-1
-                flex
-                min-h-4
-                min-w-4
-                items-center
-                justify-center
-                rounded-full
-                border
-                border-zinc-950
-                bg-red-500
-                px-1
-                text-[9px]
-                font-bold
-                leading-none
-                text-white
-              "
-            >
-              {openAlertCount > 99
-                ? "99+"
-                : openAlertCount}
-            </span>
-          )}
-
-        </button>
-
+        {/* Divider */}
 
         <div className="hidden h-6 w-px bg-zinc-800 sm:block" />
 
@@ -221,11 +139,36 @@ function Topbar({
 
         <button
           type="button"
-          className="group flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-zinc-900"
+          className="
+            group
+            flex
+            items-center
+            gap-2
+            rounded-lg
+            px-1.5
+            py-1
+            transition-colors
+            hover:bg-zinc-900
+          "
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500 text-xs font-bold text-zinc-950">
+
+          <span
+            className="
+              flex
+              h-7
+              w-7
+              items-center
+              justify-center
+              rounded-md
+              bg-emerald-500
+              text-xs
+              font-bold
+              text-zinc-950
+            "
+          >
             S
           </span>
+
 
           <div className="hidden text-left sm:block">
 
