@@ -29,8 +29,10 @@ from app.models.comment import Comment
 from app.models.activity import Activity
 from app.models.asset import Asset
 from app.models.device import Device
+from app.models.device_credential import DeviceCredential
 from app.models.telemetry import DeviceTelemetry
 from app.models.alert import Alert
+
 
 target_metadata = Base.metadata
 

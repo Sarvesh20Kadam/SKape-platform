@@ -99,3 +99,10 @@ class Device(Base):
     back_populates="device",
     cascade="all, delete-orphan",
 )
+
+    credential = relationship(
+        "DeviceCredential",
+        back_populates="device",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

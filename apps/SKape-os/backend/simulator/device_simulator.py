@@ -11,92 +11,83 @@ import requests
 # SKape Device Simulator
 # ============================================================
 
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL = os.getenv(
+    "SKAPE_BACKEND_URL",
+    "http://127.0.0.1:8000",
+)
 
-DEVICE_ID = "STM32A"
-DEVICE_DB_ID = 2
+# ------------------------------------------------------------
+# Device identity
+# ------------------------------------------------------------
+
+DEVICE_ID = os.getenv(
+    "SKAPE_DEVICE_ID",
+    "SKAPE-TEST-002",
+)
+
+# Database primary-key ID of the device
+DEVICE_DB_ID = int(
+    os.getenv(
+        "SKAPE_DEVICE_DB_ID",
+        "5",
+    )
+)
+
+# ------------------------------------------------------------
+# Intervals
+# ------------------------------------------------------------
 
 HEARTBEAT_INTERVAL = 10
 TELEMETRY_INTERVAL = 5
 
-# ------------------------------------------------------------
-# Credentials
-#
-# Set these as environment variables before running:
-#
-# $env:SKAPE_EMAIL="your-email@example.com"
-# $env:SKAPE_PASSWORD="your-password"
-# ------------------------------------------------------------
 
-EMAIL = os.getenv("SKAPE_EMAIL", "")
-PASSWORD = os.getenv("SKAPE_PASSWORD", "")
+# ============================================================
+# DEVICE CREDENTIALS
+# ============================================================
+
+DEVICE_SECRET = os.getenv(
+    "SKAPE_DEVICE_SECRET",
+    "",
+)
 
 
 # ============================================================
-# AUTHENTICATION
+# VALIDATE CONFIGURATION
 # ============================================================
 
-access_token = None
+def validate_configuration():
+    print("=" * 65)
+    print("SKape Device Simulator")
+    print("=" * 65)
+    print(f"Backend:            {BACKEND_URL}")
+    print(f"Device:             {DEVICE_ID}")
+    print(f"Database Device ID: {DEVICE_DB_ID}")
+    print(f"Heartbeat:          {HEARTBEAT_INTERVAL} seconds")
+    print(f"Telemetry:          {TELEMETRY_INTERVAL} seconds")
+    print("=" * 65)
+    print()
 
-
-def login():
-    global access_token
-
-    if not EMAIL or not PASSWORD:
+    if not DEVICE_SECRET:
+        print("ERROR: Device credentials are not configured.")
         print()
-        print("ERROR: Simulator credentials are not configured.")
+        print("Set the device secret in PowerShell:")
+        print('$env:SKAPE_DEVICE_SECRET="your-device-secret"')
         print()
-        print('Set them in PowerShell:')
-        print('$env:SKAPE_EMAIL="your-email@example.com"')
-        print('$env:SKAPE_PASSWORD="your-password"')
+        print("Do NOT paste the secret into source code.")
         print()
         return False
 
-    url = f"{BACKEND_URL}/api/v1/users/login"
-
-    try:
-        response = requests.post(
-            url,
-            data={
-                "username": EMAIL,
-                "password": PASSWORD,
-            },
-            timeout=5,
-        )
-
-        if response.status_code != 200:
-            print(
-                f"[AUTH FAILED] "
-                f"HTTP {response.status_code} | "
-                f"{response.text}"
-            )
-            return False
-
-        data = response.json()
-
-        access_token = data.get("access_token")
-
-        if not access_token:
-            print("[AUTH FAILED] No access token returned.")
-            return False
-
-        print("[AUTH] Login successful")
-
-        return True
-
-    except requests.exceptions.RequestException as error:
-        print(f"[AUTH ERROR] {error}")
-        return False
+    return True
 
 
 # ============================================================
-# HEADERS
+# DEVICE HEADERS
 # ============================================================
 
-
-def authenticated_headers():
+def device_headers():
     return {
-        "Authorization": f"Bearer {access_token}",
+        "X-Device-ID": DEVICE_ID,
+        "X-Device-Secret": DEVICE_SECRET,
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
@@ -106,21 +97,16 @@ def authenticated_headers():
 # HEARTBEAT
 # ============================================================
 
-
 def send_heartbeat():
     url = (
         f"{BACKEND_URL}"
         f"/api/v1/devices/heartbeat"
     )
 
-    params = {
-        "device_id": DEVICE_ID,
-    }
-
     try:
         response = requests.post(
             url,
-            params=params,
+            headers=device_headers(),
             timeout=5,
         )
 
@@ -159,13 +145,12 @@ def send_heartbeat():
 # TELEMETRY GENERATOR
 # ============================================================
 
-
 def generate_telemetry(tick: int):
     """
     Generate realistic changing sensor values.
 
-    The sine waves prevent the values from jumping randomly
-    while small random noise makes them look more realistic.
+    Sine waves prevent abrupt changes while small random
+    variations make the simulated readings more realistic.
     """
 
     temperature = (
@@ -204,10 +189,7 @@ def generate_telemetry(tick: int):
 # SEND TELEMETRY
 # ============================================================
 
-
 def send_telemetry(tick: int):
-    global access_token
-
     url = (
         f"{BACKEND_URL}"
         f"/api/v1/devices/"
@@ -219,34 +201,10 @@ def send_telemetry(tick: int):
     try:
         response = requests.post(
             url,
-            headers=authenticated_headers(),
+            headers=device_headers(),
             json=payload,
             timeout=5,
         )
-
-        # ----------------------------------------------------
-        # Token expired / invalid
-        # ----------------------------------------------------
-
-        if response.status_code == 401:
-            print(
-                "[TELEMETRY] Authentication expired. "
-                "Logging in again..."
-            )
-
-            if login():
-                response = requests.post(
-                    url,
-                    headers=authenticated_headers(),
-                    json=payload,
-                    timeout=5,
-                )
-            else:
-                return False
-
-        # ----------------------------------------------------
-        # Success
-        # ----------------------------------------------------
 
         if response.status_code == 200:
             data = response.json()
@@ -284,38 +242,24 @@ def send_telemetry(tick: int):
 # MAIN
 # ============================================================
 
-
 def main():
 
-    print("=" * 65)
-    print("SKape Device Simulator")
-    print("=" * 65)
-    print(f"Backend:           {BACKEND_URL}")
-    print(f"Device:            {DEVICE_ID}")
-    print(f"Database Device ID:{DEVICE_DB_ID}")
-    print(f"Heartbeat:         {HEARTBEAT_INTERVAL} seconds")
-    print(f"Telemetry:         {TELEMETRY_INTERVAL} seconds")
-    print("=" * 65)
-    print()
-
-    # --------------------------------------------------------
-    # Login
-    # --------------------------------------------------------
-
-    print("Authenticating with SKape OS...")
-
-    if not login():
+    if not validate_configuration():
         return
 
+    print("Device authentication configured.")
+    print("Using X-Device-ID + X-Device-Secret.")
     print()
+
     print("Starting device simulation...")
     print("Press CTRL+C to stop.")
     print()
 
     tick = 0
 
-    last_heartbeat = 0
-    last_telemetry = 0
+    # Send immediately on startup
+    last_heartbeat = time.time() - HEARTBEAT_INTERVAL
+    last_telemetry = time.time() - TELEMETRY_INTERVAL
 
     try:
 
@@ -355,6 +299,10 @@ def main():
         print("Stopping SKape Device Simulator...")
         print("Simulator stopped.")
 
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
 
 if __name__ == "__main__":
     main()

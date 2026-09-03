@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
@@ -109,15 +111,9 @@ def evaluate_telemetry_alerts(
     for alert in active_alerts:
         if alert.alert_type not in current_types:
             alert.is_resolved = True
-
-            from datetime import datetime, timezone
-
             alert.resolved_at = datetime.now(timezone.utc)
 
     if alerts or active_alerts:
-        db.commit()
-
-        for alert in alerts:
-            db.refresh(alert)
+        db.flush()
 
     return alerts

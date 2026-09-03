@@ -1,10 +1,11 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.permissions import require_role
+from app.device_auth import get_authenticated_device, verify_device_matches
 from app.crud.device import get_device_by_id
 from app.crud.telemetry import (
     create_telemetry,
@@ -23,6 +24,10 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# DEVICE → BACKEND TELEMETRY INGESTION
+# ============================================================
+
 @router.post(
     "/{device_id}/telemetry",
     response_model=TelemetryResponse,
@@ -31,25 +36,23 @@ def create_device_telemetry(
     device_id: int,
     telemetry: TelemetryCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(
-        require_role(
-            "owner",
-            "admin",
-            "manager",
-        )
-    ),
+    authenticated_device=Depends(get_authenticated_device),
 ):
-    device = get_device_by_id(
-        db=db,
-        device_id=device_id,
-        organization_id=current_user.organization_id,
-    )
+    """
+    Receive telemetry from an authenticated physical device.
 
-    if device is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Device not found",
-        )
+    Authentication:
+        X-Device-ID
+        X-Device-Secret
+
+    The authenticated device must match the device_id
+    specified in the URL.
+    """
+
+    device = verify_device_matches(
+        device=authenticated_device,
+        expected_device_id=device_id,
+    )
 
     return create_telemetry(
         db=db,
@@ -57,6 +60,10 @@ def create_device_telemetry(
         telemetry=telemetry,
     )
 
+
+# ============================================================
+# HUMAN → VIEW LATEST TELEMETRY
+# ============================================================
 
 @router.get(
     "/{device_id}/telemetry/latest",
@@ -100,13 +107,21 @@ def latest_device_telemetry(
     return telemetry
 
 
+# ============================================================
+# HUMAN → VIEW TELEMETRY HISTORY
+# ============================================================
+
 @router.get(
     "/{device_id}/telemetry",
     response_model=List[TelemetryResponse],
 )
 def device_telemetry_history(
     device_id: int,
-    limit: int = 50,
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(
         require_role(
@@ -117,15 +132,6 @@ def device_telemetry_history(
         )
     ),
 ):
-    if limit < 1:
-        raise HTTPException(
-            status_code=400,
-            detail="Limit must be greater than 0",
-        )
-
-    if limit > 500:
-        limit = 500
-
     device = get_device_by_id(
         db=db,
         device_id=device_id,
