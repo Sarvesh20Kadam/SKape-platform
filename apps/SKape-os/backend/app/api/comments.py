@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.permissions import require_role
+from app.exceptions import NotFoundException
 
 from app.crud.comment import (
     create_comment,
@@ -19,15 +20,20 @@ from app.schemas.comment import (
     CommentResponse,
 )
 
+
 router = APIRouter(
     prefix="/comments",
-    tags=["Comments"]
+    tags=["Comments"],
 )
 
 
+# ============================================================
+# CREATE COMMENT
+# ============================================================
+
 @router.post(
     "/",
-    response_model=CommentResponse
+    response_model=CommentResponse,
 )
 def create(
     comment: CommentCreate,
@@ -37,21 +43,32 @@ def create(
             "owner",
             "admin",
             "manager",
-            "employee"
+            "employee",
         )
-    )
+    ),
 ):
-    return create_comment(
-        db,
-        comment,
-        current_user.id,
-        current_user.organization_id
-    )
+    try:
+        return create_comment(
+            db=db,
+            comment=comment,
+            user_id=current_user.id,
+            organization_id=current_user.organization_id,
+        )
 
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+
+# ============================================================
+# GET COMMENTS FOR TASK
+# ============================================================
 
 @router.get(
     "/{task_id}",
-    response_model=List[CommentResponse]
+    response_model=List[CommentResponse],
 )
 def get_all(
     task_id: int,
@@ -63,9 +80,9 @@ def get_all(
             "owner",
             "admin",
             "manager",
-            "employee"
+            "employee",
         )
-    )
+    ),
 ):
     return get_comments(
         db=db,
@@ -75,11 +92,14 @@ def get_all(
         limit=limit,
     )
 
-    
+
+# ============================================================
+# UPDATE COMMENT
+# ============================================================
 
 @router.put(
     "/{comment_id}",
-    response_model=CommentResponse
+    response_model=CommentResponse,
 )
 def update(
     comment_id: int,
@@ -90,27 +110,38 @@ def update(
             "owner",
             "admin",
             "manager",
-            "employee"
+            "employee",
         )
-    )
+    ),
 ):
-    updated = update_comment(
-    db=db,
-    comment_id=comment_id,
-    organization_id=current_user.organization_id,
-    user_id=current_user.id,
-    updated_comment=comment,
-)
+    try:
+        updated = update_comment(
+            db=db,
+            comment_id=comment_id,
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+            updated_comment=comment,
+        )
 
-    if updated is None:
-        raise NotFoundException("Comment")
+        if updated is None:
+            raise NotFoundException("Comment")
 
-    return updated
+        return updated
 
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+
+# ============================================================
+# DELETE COMMENT
+# ============================================================
 
 @router.delete(
     "/{comment_id}",
-    response_model=CommentResponse
+    response_model=CommentResponse,
 )
 def delete(
     comment_id: int,
@@ -119,12 +150,10 @@ def delete(
         require_role(
             "owner",
             "admin",
-            "manager"
+            "manager",
         )
-    )
+    ),
 ):
-    print("DELETE API HIT")
-
     deleted = delete_comment(
         db=db,
         comment_id=comment_id,
@@ -135,7 +164,7 @@ def delete(
     if deleted is None:
         raise HTTPException(
             status_code=404,
-            detail="Comment not found"
+            detail="Comment not found",
         )
 
     return deleted

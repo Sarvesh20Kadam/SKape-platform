@@ -2,7 +2,32 @@ from sqlalchemy.orm import Session
 
 from app.crud.activity import log_activity
 from app.models.asset import Asset
+from app.models.user import User
 from app.schemas.asset import AssetCreate, AssetUpdate
+
+
+def _validate_assigned_user(
+    db: Session,
+    assigned_to: int | None,
+    organization_id: int,
+):
+    if assigned_to is None:
+        return
+
+    user = (
+        db.query(User)
+        .filter(
+            User.id == assigned_to,
+            User.organization_id == organization_id,
+            User.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if user is None:
+        raise ValueError(
+            "Assigned user not found in this organization."
+        )
 
 
 def create_asset(
@@ -11,10 +36,28 @@ def create_asset(
     organization_id: int,
     user_id: int,
 ):
+    # -------------------------------------------------
+    # Validate assigned user
+    # -------------------------------------------------
+
+    _validate_assigned_user(
+        db=db,
+        assigned_to=asset.assigned_to,
+        organization_id=organization_id,
+    )
+
+    # -------------------------------------------------
+    # Create asset
+    # -------------------------------------------------
+
     db_asset = Asset(
-        name=asset.name,
+        name=asset.name.strip(),
         asset_type=asset.asset_type,
-        description=asset.description,
+        description=(
+            asset.description.strip()
+            if asset.description
+            else None
+        ),
         location=asset.location,
         status=asset.status,
         assigned_to=asset.assigned_to,
@@ -90,7 +133,26 @@ def update_asset(
         exclude_unset=True,
     )
 
+    # -------------------------------------------------
+    # Validate assigned user if assignment changes
+    # -------------------------------------------------
+
+    if "assigned_to" in update_data:
+        _validate_assigned_user(
+            db=db,
+            assigned_to=update_data["assigned_to"],
+            organization_id=organization_id,
+        )
+
+    # -------------------------------------------------
+    # Apply updates
+    # -------------------------------------------------
+
     for key, value in update_data.items():
+
+        if isinstance(value, str):
+            value = value.strip()
+
         setattr(asset, key, value)
 
     db.commit()

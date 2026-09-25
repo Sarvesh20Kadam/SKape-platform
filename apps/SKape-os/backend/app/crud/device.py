@@ -1,12 +1,37 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
 from app.crud.activity import log_activity
 from app.models.device import Device
-from app.schemas.device import DeviceCreate, DeviceUpdate
+from app.models.asset import Asset
 from app.models.alert import Alert
+from app.schemas.device import DeviceCreate, DeviceUpdate
+
+
+def _validate_asset(
+    db: Session,
+    asset_id: int | None,
+    organization_id: int,
+):
+    if asset_id is None:
+        return
+
+    asset = (
+        db.query(Asset)
+        .filter(
+            Asset.id == asset_id,
+            Asset.organization_id == organization_id,
+            Asset.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if asset is None:
+        raise ValueError(
+            "Asset not found in this organization."
+        )
 
 
 def create_device(
@@ -15,6 +40,20 @@ def create_device(
     organization_id: int,
     user_id: int,
 ):
+    # -------------------------------------------------
+    # Validate asset
+    # -------------------------------------------------
+
+    _validate_asset(
+        db=db,
+        asset_id=device.asset_id,
+        organization_id=organization_id,
+    )
+
+    # -------------------------------------------------
+    # Device ID must be globally unique
+    # -------------------------------------------------
+
     existing_device = (
         db.query(Device)
         .filter(
@@ -24,12 +63,18 @@ def create_device(
     )
 
     if existing_device is not None:
-        raise ValueError("Device ID already exists")
+        raise ValueError(
+            "Device ID already exists"
+        )
+
+    # -------------------------------------------------
+    # Create device
+    # -------------------------------------------------
 
     db_device = Device(
         device_id=device.device_id,
-        name=device.name,
-        device_type=device.device_type,
+        name=device.name.strip(),
+        device_type=device.device_type.strip(),
         status=device.status,
         organization_id=organization_id,
         asset_id=device.asset_id,
@@ -104,7 +149,26 @@ def update_device(
         exclude_unset=True,
     )
 
+    # -------------------------------------------------
+    # Validate asset if assignment changes
+    # -------------------------------------------------
+
+    if "asset_id" in update_data:
+        _validate_asset(
+            db=db,
+            asset_id=update_data["asset_id"],
+            organization_id=organization_id,
+        )
+
+    # -------------------------------------------------
+    # Apply updates
+    # -------------------------------------------------
+
     for key, value in update_data.items():
+
+        if isinstance(value, str):
+            value = value.strip()
+
         setattr(device, key, value)
 
     db.commit()
@@ -216,13 +280,12 @@ def mark_stale_devices_offline(
     stale_devices = []
 
     for device in online_devices:
+
         last_seen = device.last_seen_at
 
         if last_seen is None:
             continue
 
-        # Some database drivers may return a naive datetime.
-        # Treat it as UTC so comparison is always consistent.
         if last_seen.tzinfo is None:
             last_seen = last_seen.replace(
                 tzinfo=timezone.utc
@@ -233,14 +296,9 @@ def mark_stale_devices_offline(
         ).total_seconds()
 
         if age_seconds > timeout_seconds:
+
             device.status = "offline"
             stale_devices.append(device)
-
-            print(
-                f"[DEVICE MONITOR] "
-                f"{device.device_id} marked OFFLINE "
-                f"(last heartbeat {age_seconds:.1f}s ago)"
-            )
 
             existing_alert = (
                 db.query(Alert)
@@ -253,6 +311,7 @@ def mark_stale_devices_offline(
             )
 
             if existing_alert is None:
+
                 offline_alert = Alert(
                     device_id=device.id,
                     organization_id=device.organization_id,

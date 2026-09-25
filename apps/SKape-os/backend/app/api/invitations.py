@@ -324,6 +324,10 @@ def accept_existing_user_invitation(
             detail="Invitation has expired.",
         )
 
+    # ---------------------------------------------------------
+    # Verify invitation belongs to authenticated user's email
+    # ---------------------------------------------------------
+
     if current_user.email.lower() != invitation.email.lower():
         raise HTTPException(
             status_code=403,
@@ -332,6 +336,38 @@ def accept_existing_user_invitation(
                 "email address."
             ),
         )
+
+    # ---------------------------------------------------------
+    # Existing users must NOT be moved between organizations
+    # ---------------------------------------------------------
+
+    if current_user.organization_id is not None:
+        if (
+            current_user.organization_id
+            != invitation.organization_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "You already belong to another "
+                    "organization. Organization switching "
+                    "through invitations is not allowed."
+                ),
+            )
+
+        # Already belongs to this organization
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "You are already a member of this "
+                "organization."
+            ),
+        )
+
+    # ---------------------------------------------------------
+    # Only users without an organization can be assigned
+    # through this legacy invitation flow.
+    # ---------------------------------------------------------
 
     current_user.organization_id = (
         invitation.organization_id

@@ -43,12 +43,19 @@ def create(
         )
     ),
 ):
-    return db_create_asset(
-        db=db,
-        asset=asset,
-        organization_id=current_user.organization_id,
-        user_id=current_user.id,
-    )
+    try:
+        return db_create_asset(
+            db=db,
+            asset=asset,
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
 
 
 @router.get(
@@ -120,21 +127,28 @@ def update(
         )
     ),
 ):
-    updated = db_update_asset(
-        db=db,
-        asset_id=asset_id,
-        organization_id=current_user.organization_id,
-        user_id=current_user.id,
-        updated_asset=asset,
-    )
-
-    if updated is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Asset not found",
+    try:
+        updated = db_update_asset(
+            db=db,
+            asset_id=asset_id,
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+            updated_asset=asset,
         )
 
-    return updated
+        if updated is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Asset not found",
+            )
+
+        return updated
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
 
 
 @router.delete(
