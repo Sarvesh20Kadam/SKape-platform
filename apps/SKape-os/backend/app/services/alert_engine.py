@@ -16,6 +16,10 @@ def evaluate_telemetry_alerts(
 
     rules = []
 
+    # --------------------------------------------------------
+    # Temperature
+    # --------------------------------------------------------
+
     if telemetry.temperature is not None:
         if telemetry.temperature >= 50:
             rules.append(
@@ -36,6 +40,10 @@ def evaluate_telemetry_alerts(
                     f"Temperature reached {telemetry.temperature:.2f} °C",
                 )
             )
+
+    # --------------------------------------------------------
+    # Sensor thresholds
+    # --------------------------------------------------------
 
     if telemetry.sensor_1 is not None and telemetry.sensor_1 >= 90:
         rules.append(
@@ -67,6 +75,10 @@ def evaluate_telemetry_alerts(
             )
         )
 
+    # --------------------------------------------------------
+    # Existing active alerts
+    # --------------------------------------------------------
+
     active_alerts = (
         db.query(Alert)
         .filter(
@@ -83,6 +95,10 @@ def evaluate_telemetry_alerts(
 
     current_types = set()
 
+    # --------------------------------------------------------
+    # Evaluate current rules
+    # --------------------------------------------------------
+
     for (
         severity,
         alert_type,
@@ -93,8 +109,48 @@ def evaluate_telemetry_alerts(
 
         existing = active_by_type.get(alert_type)
 
+        # ----------------------------------------------------
+        # Existing alert
+        # ----------------------------------------------------
+
         if existing is not None:
+
+            # ------------------------------------------------
+            # Escalation: warning -> critical
+            # ------------------------------------------------
+
+            if (
+                existing.severity == "warning"
+                and severity == "critical"
+            ):
+                existing.severity = "critical"
+                existing.title = title
+                existing.message = message
+
+            # ------------------------------------------------
+            # Already critical
+            #
+            # Never downgrade or rewrite a critical alert
+            # while the condition is still active.
+            # ------------------------------------------------
+
+            elif existing.severity == "critical":
+                continue
+
+            # ------------------------------------------------
+            # Existing warning
+            # ------------------------------------------------
+
+            else:
+                existing.severity = severity
+                existing.title = title
+                existing.message = message
+
             continue
+
+        # ----------------------------------------------------
+        # New alert
+        # ----------------------------------------------------
 
         alert = Alert(
             device_id=device.id,
@@ -108,10 +164,18 @@ def evaluate_telemetry_alerts(
         db.add(alert)
         alerts.append(alert)
 
+    # --------------------------------------------------------
+    # Resolve recovered alerts
+    # --------------------------------------------------------
+
     for alert in active_alerts:
         if alert.alert_type not in current_types:
             alert.is_resolved = True
             alert.resolved_at = datetime.now(timezone.utc)
+
+    # --------------------------------------------------------
+    # Flush changes
+    # --------------------------------------------------------
 
     if alerts or active_alerts:
         db.flush()

@@ -14,12 +14,67 @@ def calculate_device_health(
 ):
     """
     Calculate the current health of a device.
-
-    Health levels:
-        healthy  -> device is online and telemetry is fresh
-        warning   -> telemetry is becoming stale or sensors are missing
-        critical  -> device is offline or telemetry is critically stale
     """
+
+    now = datetime.now(timezone.utc)
+
+    # --------------------------------------------------------
+    # Sensor information
+    # --------------------------------------------------------
+
+    sensor_values = [
+        latest_telemetry.temperature
+        if latest_telemetry is not None
+        else None,
+        latest_telemetry.sensor_1
+        if latest_telemetry is not None
+        else None,
+        latest_telemetry.sensor_2
+        if latest_telemetry is not None
+        else None,
+        latest_telemetry.sensor_3
+        if latest_telemetry is not None
+        else None,
+    ]
+
+    sensors_total = len(sensor_values)
+    sensors_available = sum(
+        value is not None
+        for value in sensor_values
+    )
+
+    # --------------------------------------------------------
+    # Telemetry timestamp / age
+    # --------------------------------------------------------
+
+    telemetry_at = None
+    telemetry_age_seconds = None
+
+    if latest_telemetry is not None:
+        telemetry_at = latest_telemetry.created_at
+
+        if telemetry_at.tzinfo is None:
+            telemetry_at = telemetry_at.replace(
+                tzinfo=timezone.utc
+            )
+
+        telemetry_age_seconds = max(
+            0.0,
+            (now - telemetry_at).total_seconds(),
+        )
+
+    # --------------------------------------------------------
+    # Common response data
+    # --------------------------------------------------------
+
+    health_data = {
+        "device_status": device.status,
+        "last_seen_at": device.last_seen_at,
+        "telemetry_at": telemetry_at,
+        "telemetry_age_seconds": telemetry_age_seconds,
+        "sensors_available": sensors_available,
+        "sensors_total": sensors_total,
+    }
 
     # --------------------------------------------------------
     # Device connectivity
@@ -29,6 +84,7 @@ def calculate_device_health(
         return {
             "status": "critical",
             "reason": "Device is offline",
+            **health_data,
         }
 
     # --------------------------------------------------------
@@ -39,63 +95,43 @@ def calculate_device_health(
         return {
             "status": "warning",
             "reason": "No telemetry data available",
+            **health_data,
         }
 
     # --------------------------------------------------------
     # Telemetry freshness
     # --------------------------------------------------------
 
-    created_at = latest_telemetry.created_at
-
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(
-            tzinfo=timezone.utc
-        )
-
-    now = datetime.now(timezone.utc)
-
-    telemetry_age = (
-        now - created_at
-    ).total_seconds()
-
-    if telemetry_age >= TELEMETRY_CRITICAL_SECONDS:
+    if telemetry_age_seconds >= TELEMETRY_CRITICAL_SECONDS:
         return {
             "status": "critical",
             "reason": "Telemetry data is stale",
+            **health_data,
         }
 
-    if telemetry_age >= TELEMETRY_WARNING_SECONDS:
+    if telemetry_age_seconds >= TELEMETRY_WARNING_SECONDS:
         return {
             "status": "warning",
             "reason": "Telemetry data is becoming stale",
+            **health_data,
         }
 
     # --------------------------------------------------------
     # Sensor availability
     # --------------------------------------------------------
 
-    sensor_values = [
-        latest_telemetry.temperature,
-        latest_telemetry.sensor_1,
-        latest_telemetry.sensor_2,
-        latest_telemetry.sensor_3,
-    ]
-
-    missing_sensors = sum(
-        value is None
-        for value in sensor_values
-    )
-
-    if missing_sensors >= 2:
+    if sensors_available <= 2:
         return {
             "status": "warning",
             "reason": "Multiple sensor readings are unavailable",
+            **health_data,
         }
 
-    if missing_sensors == 1:
+    if sensors_available == 3:
         return {
             "status": "warning",
             "reason": "A sensor reading is unavailable",
+            **health_data,
         }
 
     # --------------------------------------------------------
@@ -105,4 +141,5 @@ def calculate_device_health(
     return {
         "status": "healthy",
         "reason": "Device is online and telemetry is healthy",
+        **health_data,
     }
