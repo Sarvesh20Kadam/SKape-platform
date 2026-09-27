@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
 from app.permissions import require_role
+from app.exceptions import NotFoundException
 
 from app.crud.task import (
     create_task as db_create_task,
@@ -21,13 +21,21 @@ from app.schemas.task import (
     TaskResponse,
 )
 
+
 router = APIRouter(
     prefix="/tasks",
-    tags=["Tasks"]
+    tags=["Tasks"],
 )
 
 
-@router.post("/", response_model=TaskResponse)
+# ============================================================
+# CREATE TASK
+# ============================================================
+
+@router.post(
+    "/",
+    response_model=TaskResponse,
+)
 def create(
     task: TaskCreate,
     db: Session = Depends(get_db),
@@ -35,9 +43,9 @@ def create(
         require_role(
             "owner",
             "admin",
-            "manager"
+            "manager",
         )
-    )
+    ),
 ):
     try:
         return db_create_task(
@@ -50,11 +58,18 @@ def create(
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=str(e),
         )
 
 
-@router.get("/", response_model=List[TaskResponse])
+# ============================================================
+# LIST TASKS
+# ============================================================
+
+@router.get(
+    "/",
+    response_model=List[TaskResponse],
+)
 def get_all(
     skip: int = 0,
     limit: int = 10,
@@ -69,10 +84,24 @@ def get_all(
             "owner",
             "admin",
             "manager",
-            "employee"
+            "employee",
         )
-    )
+    ),
 ):
+    if skip < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Skip must be greater than or equal to 0",
+        )
+
+    if limit < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Limit must be greater than 0",
+        )
+
+    if limit > 100:
+        limit = 100
 
     return db_get_tasks(
         db=db,
@@ -87,7 +116,14 @@ def get_all(
     )
 
 
-@router.get("/{task_id}", response_model=TaskResponse)
+# ============================================================
+# GET SINGLE TASK
+# ============================================================
+
+@router.get(
+    "/{task_id}",
+    response_model=TaskResponse,
+)
 def get_one(
     task_id: int,
     db: Session = Depends(get_db),
@@ -96,14 +132,14 @@ def get_one(
             "owner",
             "admin",
             "manager",
-            "employee"
+            "employee",
         )
-    )
+    ),
 ):
     task = db_get_task_by_id(
-        db,
-        task_id,
-        current_user.organization_id
+        db=db,
+        task_id=task_id,
+        organization_id=current_user.organization_id,
     )
 
     if task is None:
@@ -112,7 +148,14 @@ def get_one(
     return task
 
 
-@router.put("/{task_id}", response_model=TaskResponse)
+# ============================================================
+# UPDATE TASK
+# ============================================================
+
+@router.put(
+    "/{task_id}",
+    response_model=TaskResponse,
+)
 def update(
     task_id: int,
     task: TaskUpdate,
@@ -121,9 +164,9 @@ def update(
         require_role(
             "owner",
             "admin",
-            "manager"
+            "manager",
         )
-    )
+    ),
 ):
     try:
         updated = db_update_task(
@@ -137,7 +180,7 @@ def update(
         if updated is None:
             raise HTTPException(
                 status_code=404,
-                detail="Task not found"
+                detail="Task not found",
             )
 
         return updated
@@ -145,11 +188,18 @@ def update(
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=str(e),
         )
 
 
-@router.delete("/{task_id}", response_model=TaskResponse)
+# ============================================================
+# DELETE TASK
+# ============================================================
+
+@router.delete(
+    "/{task_id}",
+    response_model=TaskResponse,
+)
 def delete(
     task_id: int,
     db: Session = Depends(get_db),
@@ -157,9 +207,9 @@ def delete(
         require_role(
             "owner",
             "admin",
-            "manager"
+            "manager",
         )
-    )
+    ),
 ):
     deleted = db_delete_task(
         db=db,
@@ -171,7 +221,7 @@ def delete(
     if deleted is None:
         raise HTTPException(
             status_code=404,
-            detail="Task not found"
+            detail="Task not found",
         )
 
     return deleted
