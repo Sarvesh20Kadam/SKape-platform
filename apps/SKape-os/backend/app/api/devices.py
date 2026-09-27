@@ -7,6 +7,8 @@ from app.database import get_db
 from app.permissions import require_role
 from app.exceptions import NotFoundException
 from app.device_auth import get_authenticated_device
+from app.crud.telemetry import get_device_telemetry
+from app.schemas.telemetry import TelemetryResponse
 
 from app.crud.device import (
     create_device as db_create_device,
@@ -134,6 +136,54 @@ def heartbeat(
         )
 
     return device
+
+# ============================================================
+# HUMAN → GET DEVICE TELEMETRY HISTORY
+# ============================================================
+
+@router.get(
+    "/{device_id}/telemetry",
+    response_model=List[TelemetryResponse],
+)
+def get_telemetry_history(
+    device_id: int,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role(
+            "owner",
+            "admin",
+            "manager",
+            "employee",
+        )
+    ),
+):
+    if limit < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Limit must be greater than 0",
+        )
+
+    if limit > 500:
+        limit = 500
+
+    device = db_get_device_by_id(
+        db=db,
+        device_id=device_id,
+        organization_id=current_user.organization_id,
+    )
+
+    if device is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Device not found",
+        )
+
+    return get_device_telemetry(
+        db=db,
+        device=device,
+        limit=limit,
+    )
 
 
 # ============================================================
