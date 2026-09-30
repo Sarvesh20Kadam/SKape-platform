@@ -161,6 +161,8 @@ class TaskResponse(BaseModel):
 
     organization_id: int
 
+    alert_id: Optional[int]
+
     created_at: datetime
 
     updated_at: datetime

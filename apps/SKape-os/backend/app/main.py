@@ -21,6 +21,8 @@ from app.api.telemetry import router as telemetry_router
 from app.api.device_health import router as device_health_router
 from app.api.alerts import router as alerts_router
 from app.api.device_detail import router as device_detail_router
+# Register all SQLAlchemy models before application startup.
+import app.models
 
 from app.core.config import settings
 

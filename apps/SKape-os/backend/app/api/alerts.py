@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.services.alert_task import create_maintenance_task_from_alert
 from app.schemas.task import TaskResponse
+from app.crud.activity import log_activity
 
 from app.database import get_db
 from app.permissions import require_role
@@ -160,11 +161,21 @@ def create_alert_maintenance_task(
         )
 
     try:
-        task = create_maintenance_task_from_alert(
+        task, created = create_maintenance_task_from_alert(
             db=db,
             alert=alert,
             project_id=project_id,
         )
+
+        if created:
+            log_activity(
+                db=db,
+                action="created",
+                entity="task",
+                entity_id=task.id,
+                user_id=current_user.id,
+                organization_id=current_user.organization_id,
+            )
 
         db.commit()
         db.refresh(task)

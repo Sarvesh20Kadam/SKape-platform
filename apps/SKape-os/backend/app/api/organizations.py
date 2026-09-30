@@ -29,6 +29,10 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# Create Organization
+# ============================================================
+
 @router.post(
     "/",
     response_model=OrganizationResponse,
@@ -39,10 +43,15 @@ def create(
     current_user=Depends(require_role("owner")),
 ):
     return create_organization(
-        db,
-        organization,
+        db=db,
+        organization=organization,
+        user_id=current_user.id,
     )
 
+
+# ============================================================
+# Current Organization
+# ============================================================
 
 @router.get(
     "/current",
@@ -60,8 +69,8 @@ def get_current_organization(
     ),
 ):
     organization = get_organization_by_id(
-        db,
-        current_user.organization_id,
+        db=db,
+        organization_id=current_user.organization_id,
     )
 
     if organization is None:
@@ -72,6 +81,10 @@ def get_current_organization(
 
     return organization
 
+
+# ============================================================
+# Update Current Organization
+# ============================================================
 
 @router.put(
     "/current",
@@ -85,9 +98,10 @@ def update_current_organization(
     ),
 ):
     updated = update_organization(
-        db,
-        current_user.organization_id,
-        organization,
+        db=db,
+        organization_id=current_user.organization_id,
+        organization=organization,
+        user_id=current_user.id,
     )
 
     if updated is None:
@@ -98,6 +112,10 @@ def update_current_organization(
 
     return updated
 
+
+# ============================================================
+# Organization Members
+# ============================================================
 
 @router.get(
     "/members",
@@ -115,10 +133,14 @@ def get_members(
     ),
 ):
     return get_organization_members(
-        db,
-        current_user.organization_id,
+        db=db,
+        organization_id=current_user.organization_id,
     )
 
+
+# ============================================================
+# Get Organization
+# ============================================================
 
 @router.get(
     "/{organization_id}",
@@ -143,8 +165,8 @@ def get_one(
         )
 
     organization = get_organization_by_id(
-        db,
-        organization_id,
+        db=db,
+        organization_id=organization_id,
     )
 
     if organization is None:
@@ -155,6 +177,10 @@ def get_one(
 
     return organization
 
+
+# ============================================================
+# Delete Organization
+# ============================================================
 
 @router.delete(
     "/{organization_id}",
@@ -174,8 +200,9 @@ def delete(
         )
 
     deleted = delete_organization(
-        db,
-        organization_id,
+        db=db,
+        organization_id=organization_id,
+        user_id=current_user.id,
     )
 
     if deleted is None:

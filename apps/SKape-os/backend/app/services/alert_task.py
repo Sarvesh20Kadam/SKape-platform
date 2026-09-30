@@ -9,17 +9,18 @@ def create_maintenance_task_from_alert(
     db: Session,
     alert: Alert,
     project_id: int,
-) -> Task:
+) -> tuple[Task, bool]:
     """
     Create a maintenance task for an alert.
 
     The project must belong to the same organization
     as the alert.
-    """
 
-    # -------------------------------------------------
-    # Validate project
-    # -------------------------------------------------
+    Returns:
+        (task, created)
+        created=True when a new task was created.
+        created=False when an existing active task was reused.
+    """
 
     project = (
         db.query(Project)
@@ -35,17 +36,9 @@ def create_maintenance_task_from_alert(
             "Project not found in this organization."
         )
 
-    # -------------------------------------------------
-    # Determine maintenance task title
-    # -------------------------------------------------
-
     maintenance_title = (
         f"Maintenance: {alert.title}"
     )
-
-    # -------------------------------------------------
-    # Prevent duplicate active maintenance tasks
-    # -------------------------------------------------
 
     existing_task = (
         db.query(Task)
@@ -61,11 +54,11 @@ def create_maintenance_task_from_alert(
     )
 
     if existing_task is not None:
-        return existing_task
+        if existing_task.alert_id is None:
+            existing_task.alert_id = alert.id
+            db.flush()
 
-    # -------------------------------------------------
-    # Map alert severity → task priority
-    # -------------------------------------------------
+        return existing_task, False
 
     priority_map = {
         "critical": "urgent",
@@ -77,10 +70,6 @@ def create_maintenance_task_from_alert(
         alert.severity,
         "medium",
     )
-
-    # -------------------------------------------------
-    # Create maintenance task
-    # -------------------------------------------------
 
     task = Task(
         title=maintenance_title,
@@ -94,9 +83,10 @@ def create_maintenance_task_from_alert(
         project_id=project_id,
         assigned_to=None,
         organization_id=alert.organization_id,
+        alert_id=alert.id,
     )
 
     db.add(task)
     db.flush()
 
-    return task
+    return task, True

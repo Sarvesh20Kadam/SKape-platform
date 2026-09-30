@@ -3,7 +3,12 @@ from sqlalchemy.orm import Session
 from app.models.task import Task
 from app.models.project import Project
 from app.models.user import User
+from app.crud.activity import log_activity
 
+
+# ============================================================
+# LIST TASKS
+# ============================================================
 
 def get_tasks(
     db: Session,
@@ -35,31 +40,46 @@ def get_tasks(
         )
     )
 
+    # -------------------------------------------------
     # Status filter
+    # -------------------------------------------------
+
     if status is not None:
         query = query.filter(
             Task.status == status
         )
 
+    # -------------------------------------------------
     # Priority filter
+    # -------------------------------------------------
+
     if priority is not None:
         query = query.filter(
             Task.priority == priority
         )
 
+    # -------------------------------------------------
     # Assignee filter
+    # -------------------------------------------------
+
     if assigned_to is not None:
         query = query.filter(
             Task.assigned_to == assigned_to
         )
 
+    # -------------------------------------------------
     # Project filter
+    # -------------------------------------------------
+
     if project_id is not None:
         query = query.filter(
             Task.project_id == project_id
         )
 
+    # -------------------------------------------------
     # Search
+    # -------------------------------------------------
+
     if search:
         search_term = f"%{search.strip()}%"
 
@@ -68,16 +88,26 @@ def get_tasks(
             | (Task.description.ilike(search_term))
         )
 
+    # -------------------------------------------------
     # Newest tasks first
+    # -------------------------------------------------
+
     query = query.order_by(
         Task.created_at.desc()
     )
 
+    # -------------------------------------------------
     # Pagination
+    # -------------------------------------------------
+
     query = query.offset(skip).limit(limit)
 
     return query.all()
 
+
+# ============================================================
+# GET SINGLE TASK
+# ============================================================
 
 def get_task_by_id(
     db: Session,
@@ -99,6 +129,10 @@ def get_task_by_id(
     )
 
 
+# ============================================================
+# CREATE TASK
+# ============================================================
+
 def create_task(
     db: Session,
     task,
@@ -106,7 +140,8 @@ def create_task(
     user_id: int,
 ):
     """
-    Create a task inside the current organization.
+    Create a task inside the current organization
+    and record the creation in the activity log.
     """
 
     # -------------------------------------------------
@@ -167,11 +202,36 @@ def create_task(
     )
 
     db.add(new_task)
+
+    # Get database-generated ID.
+    db.flush()
+
+    # -------------------------------------------------
+    # Activity log
+    # -------------------------------------------------
+
+    log_activity(
+        db=db,
+        action="created",
+        entity="task",
+        entity_id=new_task.id,
+        user_id=user_id,
+        organization_id=organization_id,
+    )
+
+    # -------------------------------------------------
+    # Commit transaction
+    # -------------------------------------------------
+
     db.commit()
     db.refresh(new_task)
 
     return new_task
 
+
+# ============================================================
+# UPDATE TASK
+# ============================================================
 
 def update_task(
     db: Session,
@@ -181,7 +241,8 @@ def update_task(
     updated_task,
 ):
     """
-    Update a task belonging to the current organization.
+    Update a task belonging to the current organization
+    and record the update in the activity log.
     """
 
     task = (
@@ -197,7 +258,7 @@ def update_task(
         return None
 
     # -------------------------------------------------
-    # Only update fields actually supplied
+    # Only update supplied fields
     # -------------------------------------------------
 
     update_data = updated_task.model_dump(
@@ -240,8 +301,7 @@ def update_task(
                 db.query(User)
                 .filter(
                     User.id == new_assigned_to,
-                    User.organization_id
-                    == organization_id,
+                    User.organization_id == organization_id,
                 )
                 .first()
             )
@@ -252,7 +312,7 @@ def update_task(
                 )
 
     # -------------------------------------------------
-    # Apply updates
+    # Apply title update
     # -------------------------------------------------
 
     if "title" in update_data:
@@ -266,6 +326,10 @@ def update_task(
 
         task.title = title.strip()
 
+    # -------------------------------------------------
+    # Apply description update
+    # -------------------------------------------------
+
     if "description" in update_data:
 
         description = update_data["description"]
@@ -276,26 +340,67 @@ def update_task(
             else None
         )
 
+    # -------------------------------------------------
+    # Apply status update
+    # -------------------------------------------------
+
     if "status" in update_data:
         task.status = update_data["status"]
+
+    # -------------------------------------------------
+    # Apply priority update
+    # -------------------------------------------------
 
     if "priority" in update_data:
         task.priority = update_data["priority"]
 
+    # -------------------------------------------------
+    # Apply due date update
+    # -------------------------------------------------
+
     if "due_date" in update_data:
         task.due_date = update_data["due_date"]
+
+    # -------------------------------------------------
+    # Apply assignee update
+    # -------------------------------------------------
 
     if "assigned_to" in update_data:
         task.assigned_to = update_data["assigned_to"]
 
+    # -------------------------------------------------
+    # Apply project update
+    # -------------------------------------------------
+
     if "project_id" in update_data:
         task.project_id = update_data["project_id"]
+
+    # -------------------------------------------------
+    # Activity log
+    # -------------------------------------------------
+
+    log_activity(
+        db=db,
+        action="updated",
+        entity="task",
+        entity_id=task.id,
+        user_id=user_id,
+        organization_id=organization_id,
+    )
+
+    # -------------------------------------------------
+    # Commit transaction
+    # -------------------------------------------------
 
     db.commit()
     db.refresh(task)
 
     return task
 
+
+# ============================================================
+# DELETE TASK
+# ============================================================
 
 def delete_task(
     db: Session,
@@ -304,7 +409,8 @@ def delete_task(
     user_id: int,
 ):
     """
-    Delete a task belonging to the current organization.
+    Delete a task belonging to the current organization
+    and record the deletion in the activity log.
     """
 
     task = (
@@ -319,7 +425,35 @@ def delete_task(
     if task is None:
         return None
 
+    # Keep the ID before deleting the SQLAlchemy object.
+    task_id_value = task.id
+
+    # -------------------------------------------------
+    # Delete task
+    # -------------------------------------------------
+
     db.delete(task)
+
+    # Flush deletion before recording activity.
+    db.flush()
+
+    # -------------------------------------------------
+    # Activity log
+    # -------------------------------------------------
+
+    log_activity(
+        db=db,
+        action="deleted",
+        entity="task",
+        entity_id=task_id_value,
+        user_id=user_id,
+        organization_id=organization_id,
+    )
+
+    # -------------------------------------------------
+    # Commit transaction
+    # -------------------------------------------------
+
     db.commit()
 
     return task

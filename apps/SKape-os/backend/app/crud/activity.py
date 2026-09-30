@@ -9,10 +9,14 @@ def log_activity(
     entity: str,
     entity_id: int,
     user_id: int,
-    organization_id: int
+    organization_id: int,
 ):
-    print("========== LOG_ACTIVITY CALLED ==========")
-    print(action, entity, entity_id, user_id, organization_id)
+    """
+    Create an activity/audit record.
+
+    Transaction ownership remains with the caller.
+    This function only adds and flushes the record.
+    """
 
     activity = Activity(
         action=action,
@@ -23,10 +27,7 @@ def log_activity(
     )
 
     db.add(activity)
-    db.commit()
-    db.refresh(activity)
-
-    print("Activity Saved:", activity.id)
+    db.flush()
 
     return activity
 
@@ -35,8 +36,13 @@ def get_activities(
     db: Session,
     organization_id: int,
     skip: int = 0,
-    limit: int = 10
+    limit: int = 10,
 ):
+    """
+    Return activities belonging to the current organization,
+    newest first.
+    """
+
     return (
         db.query(Activity)
         .filter(

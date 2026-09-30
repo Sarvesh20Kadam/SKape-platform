@@ -82,3 +82,9 @@ class Alert(Base):
         "Organization",
         back_populates="alerts",
     )
+
+
+    tasks = relationship(
+        "Task",
+        back_populates="alert",
+    )

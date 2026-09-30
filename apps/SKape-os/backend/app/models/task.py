@@ -48,6 +48,14 @@ class Task(Base):
         nullable=False
     )
 
+
+    alert_id = Column(
+        Integer,
+        ForeignKey("alerts.id"),
+        nullable=True,
+        index=True,
+    )
+
     due_date = Column(DateTime)
 
     created_at = Column(
@@ -75,9 +83,14 @@ class Task(Base):
         "Organization",
         back_populates="tasks"
     )
-   
+
     comments = relationship(
     "Comment",
     back_populates="task",
     cascade="all, delete-orphan"
 )
+
+    alert = relationship(
+        "Alert",
+        back_populates="tasks",
+    )
