@@ -3,6 +3,7 @@ import api from "../../../api/client";
 import type {
   CreateInvitationPayload,
   Invitation,
+  IssuedInvitation,
   Organization,
   OrganizationMember,
   UpdateOrganizationPayload,
@@ -67,8 +68,8 @@ export async function getOrganizationInvitations(): Promise<
 
 export async function createInvitation(
   data: CreateInvitationPayload,
-): Promise<Invitation> {
-  const response = await api.post<Invitation>(
+): Promise<IssuedInvitation> {
+  const response = await api.post<IssuedInvitation>(
     "/invitations/",
     data,
   );
@@ -86,8 +87,8 @@ export async function revokeInvitation(
 
 export async function resendInvitation(
   invitationId: number,
-): Promise<Invitation> {
-  const response = await api.post<Invitation>(
+): Promise<IssuedInvitation> {
+  const response = await api.post<IssuedInvitation>(
     `/invitations/${invitationId}/resend`,
   );
 

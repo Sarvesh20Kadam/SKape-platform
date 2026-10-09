@@ -20,10 +20,25 @@ import {
 import type {
   CreateInvitationPayload,
   Invitation,
+  IssuedInvitation,
   Organization,
   OrganizationMember,
   UpdateOrganizationPayload,
 } from "../types/organization.types";
+
+function toInvitationSummary(
+  invitation: IssuedInvitation,
+): Invitation {
+  return {
+    id: invitation.id,
+    email: invitation.email,
+    role: invitation.role,
+    status: invitation.status,
+    organization_id: invitation.organization_id,
+    expires_at: invitation.expires_at,
+    created_at: invitation.created_at,
+  };
+}
 
 type UseOrganizationResult = {
   organization: Organization | null;
@@ -46,7 +61,7 @@ type UseOrganizationResult = {
 
   createInvitation: (
     data: CreateInvitationPayload,
-  ) => Promise<void>;
+  ) => Promise<IssuedInvitation>;
 
   updateMemberRole: (
     userId: number,
@@ -59,7 +74,7 @@ type UseOrganizationResult = {
 
   resendInvitation: (
     invitationId: number,
-  ) => Promise<Invitation>;
+  ) => Promise<IssuedInvitation>;
 };
 
 export function useOrganization(): UseOrganizationResult {
@@ -203,7 +218,7 @@ export function useOrganization(): UseOrganizationResult {
   const createInvitation = useCallback(
     async (
       data: CreateInvitationPayload,
-    ): Promise<void> => {
+    ): Promise<IssuedInvitation> => {
       try {
         setInviting(true);
         setError(null);
@@ -213,10 +228,12 @@ export function useOrganization(): UseOrganizationResult {
 
         setInvitations(
           (current) => [
-            created,
+            toInvitationSummary(created),
             ...current,
           ],
         );
+
+        return created;
       } catch (err) {
         console.error(
           "Failed to create invitation:",
@@ -326,7 +343,7 @@ export function useOrganization(): UseOrganizationResult {
 const resendInvitation = useCallback(
   async (
     invitationId: number,
-  ): Promise<Invitation> => {
+  ): Promise<IssuedInvitation> => {
     try {
       setResending(true);
       setError(null);
