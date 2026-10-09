@@ -26,8 +26,8 @@ class UnauthorizedException(HTTPException):
 
 
 class ForbiddenException(HTTPException):
-    def __init__(self):
+    def __init__(self, message: str = "Forbidden"):
         super().__init__(
             status_code=403,
-            detail="Forbidden"
+            detail=message,
         )

@@ -1,15 +1,47 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class CommentCreate(BaseModel):
-    content: str
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+    )
     task_id: int
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError(
+                "Comment content cannot be empty."
+            )
+
+        return value
 
 
 class CommentUpdate(BaseModel):
-    content: str
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+    )
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError(
+                "Comment content cannot be empty."
+            )
+
+        return value
 
 
 class CommentResponse(BaseModel):
