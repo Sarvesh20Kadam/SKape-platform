@@ -3,6 +3,10 @@ import secrets
 
 from sqlalchemy.orm import Session
 
+from app.crud.user import (
+    get_user_by_email,
+    normalize_email,
+)
 from app.models.invitation import Invitation
 from app.models.user import User
 from app.schemas.invitation import InvitationCreate
@@ -144,12 +148,21 @@ def create_user_from_invitation(
     name: str,
     password: str,
 ):
-    existing_user = (
-        db.query(User)
-        .filter(
-            User.email == invitation.email,
+    email = normalize_email(invitation.email)
+
+    organization = invitation.organization
+
+    if (
+        organization is None
+        or not organization.is_active
+    ):
+        raise ValueError(
+            "Organization is inactive"
         )
-        .first()
+
+    existing_user = get_user_by_email(
+        db,
+        email,
     )
 
     if existing_user:
@@ -159,7 +172,7 @@ def create_user_from_invitation(
 
     user = User(
         name=name,
-        email=invitation.email,
+        email=email,
         hashed_password=hash_password(password),
         role=invitation.role,
         organization_id=invitation.organization_id,

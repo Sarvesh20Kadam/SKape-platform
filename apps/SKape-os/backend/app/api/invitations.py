@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.user import User
 from app.models.invitation import Invitation
 from app.permissions import require_role
 
@@ -19,12 +18,19 @@ from app.crud.invitation import (
     revoke_invitation,
     resend_invitation,
 )
+from app.crud.user import get_user_by_email
 
 from app.schemas.invitation import (
     InvitationAccept,
     InvitationCreate,
     InvitationJoin,
+    InvitationListResponse,
     InvitationResponse,
+)
+
+
+INVITATION_EMAIL_UNAVAILABLE = (
+    "This email cannot be invited."
 )
 
 
@@ -33,6 +39,10 @@ router = APIRouter(
     tags=["Invitations"],
 )
 
+
+# =========================================================
+# CREATE INVITATION
+# =========================================================
 
 @router.post(
     "/",
@@ -47,32 +57,24 @@ def create_new_invitation(
 ):
     email = invitation.email.strip().lower()
 
-    # =========================================================
-    # CHECK IF USER IS ALREADY A MEMBER
-    # =========================================================
+    # =====================================================
+    # CHECK IF USER ALREADY EXISTS
+    # =====================================================
 
-    existing_user = (
-        db.query(User)
-        .filter(
-            User.email == email,
-            User.organization_id
-            == current_user.organization_id,
-        )
-        .first()
+    existing_user = get_user_by_email(
+        db,
+        email,
     )
 
-    if existing_user:
+    if existing_user is not None:
         raise HTTPException(
             status_code=409,
-            detail=(
-                "This user is already a member "
-                "of your organization."
-            ),
+            detail=INVITATION_EMAIL_UNAVAILABLE,
         )
 
-    # =========================================================
+    # =====================================================
     # CHECK EXISTING PENDING INVITATION
-    # =========================================================
+    # =====================================================
 
     existing = get_pending_invitation_by_email(
         db,
@@ -89,9 +91,9 @@ def create_new_invitation(
             ),
         )
 
-    # =========================================================
+    # =====================================================
     # CREATE INVITATION
-    # =========================================================
+    # =====================================================
 
     try:
         return create_invitation(
@@ -109,9 +111,14 @@ def create_new_invitation(
             detail=str(exc),
         )
 
+
+# =========================================================
+# GET ORGANIZATION INVITATIONS
+# =========================================================
+
 @router.get(
     "/",
-    response_model=List[InvitationResponse],
+    response_model=List[InvitationListResponse],
 )
 def get_invitations(
     db: Session = Depends(get_db),
@@ -128,6 +135,10 @@ def get_invitations(
         current_user.organization_id,
     )
 
+
+# =========================================================
+# REVOKE INVITATION
+# =========================================================
 
 @router.delete(
     "/{invitation_id}"
@@ -172,6 +183,10 @@ def revoke_invitation_endpoint(
     }
 
 
+# =========================================================
+# RESEND INVITATION
+# =========================================================
+
 @router.post(
     "/{invitation_id}/resend",
     response_model=InvitationResponse,
@@ -212,6 +227,10 @@ def resend_invitation_endpoint(
         )
 
 
+# =========================================================
+# ACCEPT INVITATION - NEW USER
+# =========================================================
+
 @router.post("/accept")
 def accept_invitation(
     request: InvitationAccept,
@@ -228,11 +247,19 @@ def accept_invitation(
             detail="Invalid invitation token.",
         )
 
+    # =====================================================
+    # CHECK INVITATION STATUS
+    # =====================================================
+
     if invitation.status != "pending":
         raise HTTPException(
             status_code=400,
             detail="Invitation has already been used.",
         )
+
+    # =====================================================
+    # CHECK EXPIRATION
+    # =====================================================
 
     now = datetime.now(timezone.utc)
 
@@ -249,11 +276,34 @@ def accept_invitation(
             detail="Invitation has expired.",
         )
 
+    # =====================================================
+    # CHECK ORGANIZATION LIFECYCLE
+    # =====================================================
+
+    organization = invitation.organization
+
+    if (
+        organization is None
+        or not organization.is_active
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Organization is inactive",
+        )
+
+    # =====================================================
+    # VALIDATE NAME
+    # =====================================================
+
     if not request.name.strip():
         raise HTTPException(
             status_code=400,
             detail="Name is required.",
         )
+
+    # =====================================================
+    # VALIDATE PASSWORD
+    # =====================================================
 
     if len(request.password) < 8:
         raise HTTPException(
@@ -264,6 +314,10 @@ def accept_invitation(
             ),
         )
 
+    # =====================================================
+    # CREATE USER
+    # =====================================================
+
     try:
         user = create_user_from_invitation(
             db,
@@ -273,9 +327,15 @@ def accept_invitation(
         )
 
     except ValueError as exc:
+        detail = str(exc)
+        status_code = (
+            403
+            if detail == "Organization is inactive"
+            else 400
+        )
         raise HTTPException(
-            status_code=400,
-            detail=str(exc),
+            status_code=status_code,
+            detail=detail,
         )
 
     return {
@@ -285,6 +345,10 @@ def accept_invitation(
         "role": user.role,
     }
 
+
+# =========================================================
+# ACCEPT INVITATION - EXISTING USER
+# =========================================================
 
 @router.post("/accept-existing")
 def accept_existing_user_invitation(
@@ -303,11 +367,19 @@ def accept_existing_user_invitation(
             detail="Invalid invitation token.",
         )
 
+    # =====================================================
+    # CHECK INVITATION STATUS
+    # =====================================================
+
     if invitation.status != "pending":
         raise HTTPException(
             status_code=400,
             detail="Invitation has already been used.",
         )
+
+    # =====================================================
+    # CHECK EXPIRATION
+    # =====================================================
 
     now = datetime.now(timezone.utc)
 
@@ -324,11 +396,14 @@ def accept_existing_user_invitation(
             detail="Invitation has expired.",
         )
 
-    # ---------------------------------------------------------
-    # Verify invitation belongs to authenticated user's email
-    # ---------------------------------------------------------
+    # =====================================================
+    # VERIFY EMAIL
+    # =====================================================
 
-    if current_user.email.lower() != invitation.email.lower():
+    if (
+        current_user.email.lower()
+        != invitation.email.lower()
+    ):
         raise HTTPException(
             status_code=403,
             detail=(
@@ -337,52 +412,19 @@ def accept_existing_user_invitation(
             ),
         )
 
-    # ---------------------------------------------------------
-    # Existing users must NOT be moved between organizations
-    # ---------------------------------------------------------
+    # =====================================================
+    # MEMBERSHIP CANNOT CHANGE
+    #
+    # Authenticated users already belong to one
+    # organization. This endpoint does not move them
+    # or assign a role from the invitation.
+    # =====================================================
 
-    if current_user.organization_id is not None:
-        if (
-            current_user.organization_id
-            != invitation.organization_id
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "You already belong to another "
-                    "organization. Organization switching "
-                    "through invitations is not allowed."
-                ),
-            )
-
-        # Already belongs to this organization
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "You are already a member of this "
-                "organization."
-            ),
-        )
-
-    # ---------------------------------------------------------
-    # Only users without an organization can be assigned
-    # through this legacy invitation flow.
-    # ---------------------------------------------------------
-
-    current_user.organization_id = (
-        invitation.organization_id
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "You already belong to an organization. "
+            "Invitations cannot change organization "
+            "membership."
+        ),
     )
-
-    current_user.role = invitation.role
-
-    invitation.status = "accepted"
-
-    db.commit()
-    db.refresh(current_user)
-
-    return {
-        "message": "Invitation accepted successfully.",
-        "user_id": current_user.id,
-        "organization_id": current_user.organization_id,
-        "role": current_user.role,
-    }

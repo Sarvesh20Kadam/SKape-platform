@@ -4,6 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import (
+    get_owner_for_organization_recovery,
+)
 from app.permissions import require_role
 
 from app.crud.organization import (
@@ -12,6 +15,8 @@ from app.crud.organization import (
     update_organization,
     delete_organization,
     get_organization_members,
+    deactivate_organization,
+    activate_organization,
 )
 
 from app.schemas.organization import (
@@ -40,7 +45,9 @@ router = APIRouter(
 def create(
     organization: OrganizationCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role("owner")),
+    current_user=Depends(
+        require_role("owner")
+    ),
 ):
     return create_organization(
         db=db,
@@ -79,6 +86,12 @@ def get_current_organization(
             detail="Organization not found",
         )
 
+    if not organization.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Organization is inactive.",
+        )
+
     return organization
 
 
@@ -94,15 +107,25 @@ def update_current_organization(
     organization: OrganizationUpdate,
     db: Session = Depends(get_db),
     current_user=Depends(
-        require_role("owner", "admin")
+        require_role(
+            "owner",
+            "admin",
+        )
     ),
 ):
-    updated = update_organization(
-        db=db,
-        organization_id=current_user.organization_id,
-        organization=organization,
-        user_id=current_user.id,
-    )
+    try:
+        updated = update_organization(
+            db=db,
+            organization_id=current_user.organization_id,
+            organization=organization,
+            user_id=current_user.id,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
 
     if updated is None:
         raise HTTPException(
@@ -137,6 +160,61 @@ def get_members(
         organization_id=current_user.organization_id,
     )
 
+# ============================================================
+# Deactivate Current Organization
+# ============================================================
+
+@router.post(
+    "/current/deactivate",
+    response_model=OrganizationResponse,
+)
+def deactivate_current_organization(
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        require_role("owner")
+    ),
+):
+    organization = deactivate_organization(
+        db=db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+    )
+
+    if organization is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found",
+        )
+
+    return organization
+
+# ============================================================
+# Activate Current Organization
+# ============================================================
+
+@router.post(
+    "/current/activate",
+    response_model=OrganizationResponse,
+)
+def activate_current_organization(
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        get_owner_for_organization_recovery
+    ),
+):
+    organization = activate_organization(
+        db=db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+    )
+
+    if organization is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found",
+        )
+
+    return organization
 
 # ============================================================
 # Get Organization
@@ -157,7 +235,6 @@ def get_one(
         )
     ),
 ):
-    # Users can only access their own organization.
     if organization_id != current_user.organization_id:
         raise HTTPException(
             status_code=403,
@@ -175,18 +252,24 @@ def get_one(
             detail="Organization not found",
         )
 
+    if not organization.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Organization is inactive.",
+        )
+
     return organization
 
 
 # ============================================================
-# Delete Organization
+# Deactivate Organization
 # ============================================================
 
-@router.delete(
-    "/{organization_id}",
+@router.patch(
+    "/{organization_id}/deactivate",
     response_model=OrganizationResponse,
 )
-def delete(
+def deactivate(
     organization_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(
@@ -199,16 +282,66 @@ def delete(
             detail="You don't have access to this organization.",
         )
 
-    deleted = delete_organization(
-        db=db,
-        organization_id=organization_id,
-        user_id=current_user.id,
-    )
+    try:
+        organization = deactivate_organization(
+            db=db,
+            organization_id=organization_id,
+            user_id=current_user.id,
+        )
 
-    if deleted is None:
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    if organization is None:
         raise HTTPException(
             status_code=404,
             detail="Organization not found",
         )
 
-    return deleted
+    return organization
+
+
+# ============================================================
+# Reactivate Organization
+# ============================================================
+
+@router.patch(
+    "/{organization_id}/reactivate",
+    response_model=OrganizationResponse,
+)
+def reactivate(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        get_owner_for_organization_recovery
+    ),
+):
+    if organization_id != current_user.organization_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this organization.",
+        )
+
+    try:
+        organization = activate_organization(
+            db=db,
+            organization_id=organization_id,
+            user_id=current_user.id,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    if organization is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found",
+        )
+
+    return organization

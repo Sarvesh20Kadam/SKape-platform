@@ -25,7 +25,6 @@ class OrganizationUpdate(BaseModel):
     logo: Optional[str] = None
     industry: Optional[str] = None
     address: Optional[str] = None
-    is_active: Optional[bool] = None
 
 
 class OrganizationResponse(OrganizationBase):

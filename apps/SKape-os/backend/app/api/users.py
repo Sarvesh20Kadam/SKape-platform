@@ -79,6 +79,26 @@ def login(
             detail="Invalid email or password",
         )
 
+    if not authenticated_user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="User account is inactive",
+        )
+
+    organization = authenticated_user.organization
+
+    if organization is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Organization not found",
+        )
+
+    if not organization.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Organization is inactive",
+        )
+
     token = create_access_token(
         {
             "sub": authenticated_user.email,
@@ -154,10 +174,11 @@ def update_role(
 
     try:
         return update_user_role(
-            db,
-            user,
-            request.role,
-        )
+            db=db,
+            user=user,
+            role=request.role,
+            actor_user_id=current_user.id,
+)
 
     except ValueError as exc:
         raise HTTPException(

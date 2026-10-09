@@ -12,9 +12,11 @@ oauth2_scheme = OAuth2PasswordBearer(
 )
 
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
+def _load_authenticated_user(
+    token: str,
+    db: Session,
+    *,
+    allow_inactive_organization: bool,
 ):
     payload = verify_token(token)
 
@@ -56,6 +58,67 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User is not associated with an organization",
+        )
+
+    # --------------------------------------------------------
+    # Organization lifecycle security
+    # --------------------------------------------------------
+
+    organization = user.organization
+
+    if organization is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization not found",
+        )
+
+    if (
+        not organization.is_active
+        and not allow_inactive_organization
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization is inactive",
+        )
+
+    return user
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    return _load_authenticated_user(
+        token,
+        db,
+        allow_inactive_organization=False,
+    )
+
+
+def get_owner_for_organization_recovery(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    """
+    Authenticate the owner of an organization that may be inactive.
+
+    This dependency is only for reactivation. It does not grant
+    access to other protected routes.
+    """
+
+    user = _load_authenticated_user(
+        token,
+        db,
+        allow_inactive_organization=True,
+    )
+
+    if user.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "You don't have permission to "
+                "perform this action."
+            ),
         )
 
     return user

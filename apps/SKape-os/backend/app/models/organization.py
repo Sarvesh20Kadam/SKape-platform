@@ -3,8 +3,8 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
+    true,
 )
-
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -13,36 +13,72 @@ from app.database import Base
 class Organization(Base):
     __tablename__ = "organizations"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
 
-    name = Column(String, nullable=False)
+    name = Column(
+        String,
+        nullable=False,
+    )
 
-    slug = Column(String, unique=True, index=True, nullable=False)
+    slug = Column(
+        String,
+        unique=True,
+        index=True,
+        nullable=False,
+    )
 
-    email = Column(String, unique=True, nullable=True)
+    email = Column(
+        String,
+        unique=True,
+        nullable=True,
+    )
 
-    phone = Column(String, nullable=True)
+    phone = Column(
+        String,
+        nullable=True,
+    )
 
-    website = Column(String, nullable=True)
+    website = Column(
+        String,
+        nullable=True,
+    )
 
-    logo = Column(String, nullable=True)
+    logo = Column(
+        String,
+        nullable=True,
+    )
 
-    industry = Column(String, nullable=True)
+    industry = Column(
+        String,
+        nullable=True,
+    )
 
-    address = Column(String, nullable=True)
+    address = Column(
+        String,
+        nullable=True,
+    )
 
-    is_active = Column(Boolean, default=True)
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true(),
+    )
 
     users = relationship(
         "User",
         back_populates="organization",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     projects = relationship(
         "Project",
         back_populates="organization",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     assets = relationship(
@@ -60,29 +96,29 @@ class Organization(Base):
     invitations = relationship(
         "Invitation",
         back_populates="organization",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     tasks = relationship(
         "Task",
         back_populates="organization",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     comments = relationship(
         "Comment",
         back_populates="organization",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     activities = relationship(
-    "Activity",
-    back_populates="organization",
-    cascade="all, delete-orphan"
-)
+        "Activity",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
 
     alerts = relationship(
-    "Alert",
-    back_populates="organization",
-    cascade="all, delete-orphan",
-)
+        "Alert",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )

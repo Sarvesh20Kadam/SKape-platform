@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from sqlalchemy.orm import Session
 
 from app.models.task import Task
@@ -173,6 +175,7 @@ def create_task(
             .filter(
                 User.id == task.assigned_to,
                 User.organization_id == organization_id,
+                User.is_active.is_(True),
             )
             .first()
         )
@@ -302,6 +305,7 @@ def update_task(
                 .filter(
                     User.id == new_assigned_to,
                     User.organization_id == organization_id,
+                    User.is_active.is_(True),
                 )
                 .first()
             )
@@ -425,8 +429,22 @@ def delete_task(
     if task is None:
         return None
 
-    # Keep the ID before deleting the SQLAlchemy object.
+    # Keep a response payload before commit expires the row.
     task_id_value = task.id
+    snapshot = SimpleNamespace(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        due_date=task.due_date,
+        status=task.status,
+        project_id=task.project_id,
+        assigned_to=task.assigned_to,
+        organization_id=task.organization_id,
+        alert_id=task.alert_id,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+    )
 
     # -------------------------------------------------
     # Delete task
@@ -456,4 +474,4 @@ def delete_task(
 
     db.commit()
 
-    return task
+    return snapshot
