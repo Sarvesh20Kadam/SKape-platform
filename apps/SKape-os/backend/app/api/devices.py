@@ -331,13 +331,19 @@ def update(
         )
     ),
 ):
-    updated = db_update_device(
-        db=db,
-        device_id=device_id,
-        organization_id=current_user.organization_id,
-        user_id=current_user.id,
-        updated_device=device,
-    )
+    try:
+        updated = db_update_device(
+            db=db,
+            device_id=device_id,
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+            updated_device=device,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
 
     if updated is None:
         raise HTTPException(

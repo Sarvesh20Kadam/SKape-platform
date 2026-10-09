@@ -1,5 +1,6 @@
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -14,6 +15,12 @@ from app.database import Base
 
 class Device(Base):
     __tablename__ = "devices"
+    __table_args__ = (
+        CheckConstraint(
+            "status <> 'online' OR last_seen_at IS NOT NULL",
+            name="ck_devices_online_requires_last_seen",
+        ),
+    )
 
     id = Column(
         Integer,

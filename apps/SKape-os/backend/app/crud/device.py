@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
@@ -9,6 +10,46 @@ from app.models.device import Device
 from app.models.asset import Asset
 from app.models.alert import Alert
 from app.schemas.device import DeviceCreate, DeviceUpdate
+
+
+def _normalized_status(status):
+    if isinstance(status, str):
+        return status.strip()
+    return status
+
+
+def _reject_online_without_last_seen(status, last_seen_at):
+    """Online means the device has checked in.
+
+    Heartbeat and telemetry are the lifecycle paths that set status
+    to online, and both record last_seen_at in the same write. A
+    missing timestamp is not an outage and must not be stored as online.
+    """
+
+    if (
+        _normalized_status(status) == "online"
+        and last_seen_at is None
+    ):
+        raise ValueError(
+            "A device cannot be online without a last-seen time."
+        )
+
+
+def _resolve_offline_alerts(db, device):
+    active_alerts = (
+        db.query(Alert)
+        .filter(
+            Alert.device_id == device.id,
+            Alert.alert_type == "device_offline",
+            Alert.is_resolved.is_(False),
+        )
+        .all()
+    )
+
+    resolved_at = datetime.now(timezone.utc)
+    for alert in active_alerts:
+        alert.is_resolved = True
+        alert.resolved_at = resolved_at
 
 
 def _validate_asset(
@@ -68,6 +109,9 @@ def create_device(
             "Device ID already exists"
         )
 
+    status = _normalized_status(device.status)
+    _reject_online_without_last_seen(status, None)
+
     # -------------------------------------------------
     # Create device
     # -------------------------------------------------
@@ -76,7 +120,7 @@ def create_device(
         device_id=device.device_id,
         name=device.name.strip(),
         device_type=device.device_type.strip(),
-        status=device.status,
+        status=status,
         organization_id=organization_id,
         asset_id=device.asset_id,
         is_active=True,
@@ -170,6 +214,16 @@ def update_device(
             organization_id=organization_id,
         )
 
+    next_status = _normalized_status(
+        update_data.get("status", device.status)
+    )
+    next_seen = (
+        update_data["last_seen_at"]
+        if "last_seen_at" in update_data
+        else device.last_seen_at
+    )
+    _reject_online_without_last_seen(next_status, next_seen)
+
     # -------------------------------------------------
     # Apply updates
     # -------------------------------------------------
@@ -262,13 +316,12 @@ def heartbeat_device(
         .filter(
             Device.device_id == device_id,
         )
+        .with_for_update()
         .first()
     )
 
     if device is None:
         return None
-
-    was_offline = device.status == "offline"
 
     device.status = "online"
     device.last_seen_at = func.now()
@@ -276,20 +329,10 @@ def heartbeat_device(
 
     db.flush()
 
-    if was_offline:
-        active_alerts = (
-            db.query(Alert)
-            .filter(
-                Alert.device_id == device.id,
-                Alert.alert_type == "device_offline",
-                Alert.is_resolved.is_(False),
-            )
-            .all()
-        )
-
-        for alert in active_alerts:
-            alert.is_resolved = True
-            alert.resolved_at = datetime.now(timezone.utc)
+    # Resolve even when the row was already online. A concurrent
+    # monitor cycle may have inserted the offline alert after this
+    # heartbeat read the previous status.
+    _resolve_offline_alerts(db, device)
 
     db.commit()
     db.refresh(device)
@@ -302,38 +345,50 @@ def mark_stale_devices_offline(
     db: Session,
     timeout_seconds: int = 30,
 ):
-    now = datetime.now(timezone.utc)
+    """
+    Mark contacted devices offline when last_seen_at is older than
+    timeout_seconds.
 
-    online_devices = (
-        db.query(Device)
-        .filter(
+    A device becomes online only through heartbeat or telemetry, and
+    both of those writes store last_seen_at. An online row with no
+    last_seen_at is inconsistent, not stale: this function does not
+    change it and does not create an outage for it.
+
+    The transition is one conditional UPDATE. A heartbeat or telemetry
+    commit that stored a newer last_seen_at no longer matches, so this
+    session cannot overwrite that contact with an older decision.
+    When this session has only read so far, its snapshot is closed
+    first so the UPDATE observes those commits. The caller commits.
+    """
+
+    if not db.new and not db.dirty and not db.deleted:
+        db.rollback()
+
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        seconds=timeout_seconds
+    )
+    statement = (
+        update(Device)
+        .where(
             Device.status == "online",
             Device.last_seen_at.isnot(None),
+            Device.last_seen_at < cutoff,
         )
+        .values(status="offline")
+        .returning(Device.id)
+    )
+    changed_ids = list(db.execute(statement).scalars().all())
+
+    if not changed_ids:
+        return []
+
+    for device_id in changed_ids:
+        loaded = db.get(Device, device_id)
+        if loaded is not None:
+            db.expire(loaded)
+
+    return (
+        db.query(Device)
+        .filter(Device.id.in_(changed_ids))
         .all()
     )
-
-    stale_devices = []
-
-    for device in online_devices:
-        last_seen = device.last_seen_at
-
-        if last_seen is None:
-            continue
-
-        if last_seen.tzinfo is None:
-            last_seen = last_seen.replace(
-                tzinfo=timezone.utc
-            )
-
-        age_seconds = (
-            now - last_seen
-        ).total_seconds()
-
-        if age_seconds > timeout_seconds:
-            device.status = "offline"
-            stale_devices.append(device)
-
-    # Transaction ownership belongs to the caller.
-    # The caller creates alerts and commits all changes.
-    return stale_devices

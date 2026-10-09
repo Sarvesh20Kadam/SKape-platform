@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.alert import Alert
@@ -81,8 +82,10 @@ def create_alert(
     Create an alert only when an active alert of the same
     type does not already exist for the device.
 
-    This prevents the background monitor from creating
-    duplicate alerts every 10 seconds.
+    The pre-check avoids an insert on the common path. Concurrent
+    workers are still limited by the unique index on one unresolved
+    device_offline alert per device. A lost insert keeps the caller's
+    other pending changes and returns the winning alert.
     """
 
     existing_alert = get_active_device_alert(
@@ -105,8 +108,20 @@ def create_alert(
         is_resolved=False,
     )
 
-    db.add(alert)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(alert)
+            db.flush([alert])
+    except IntegrityError:
+        existing_alert = get_active_device_alert(
+            db=db,
+            device_id=device_id,
+            organization_id=organization_id,
+            alert_type=alert_type,
+        )
+        if existing_alert is None:
+            raise
+        return existing_alert, False
 
     return alert, True
 
