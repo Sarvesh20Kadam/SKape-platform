@@ -1,4 +1,3 @@
-import asyncio
 import importlib.util
 import os
 from datetime import datetime, timedelta, timezone
@@ -11,11 +10,8 @@ os.environ.setdefault("ALGORITHM", "HS256")
 import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.crud.activity import log_activity as write_activity
@@ -23,8 +19,6 @@ from app.crud.organization import (
     activate_organization,
     deactivate_organization,
 )
-from app.database import Base, get_db
-from app.main import app
 from app.models.activity import Activity
 from app.models.comment import Comment
 from app.models.device_credential import DeviceCredential
@@ -71,39 +65,6 @@ def _email_uniqueness_migration():
         "e3a91c7b2d44_enforce_case_insensitive_email_uniqueness.py",
         "case_insensitive_email_uniqueness",
     )
-
-
-@pytest.fixture
-def session_factory():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-    @event.listens_for(engine, "connect")
-    def _enable_foreign_keys(dbapi_connection, _record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    Base.metadata.create_all(bind=engine)
-    factory = sessionmaker(
-        bind=engine,
-        autocommit=False,
-        autoflush=False,
-    )
-    yield factory
-    engine.dispose()
-
-
-@pytest.fixture
-def db(session_factory):
-    session = session_factory()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 def _org(db, name, slug, active=True):
@@ -185,36 +146,6 @@ def world(db):
         "inactive_user": inactive_user.email,
         "owner_id": owner.id,
     }
-
-
-@pytest.fixture
-def api(session_factory, monkeypatch):
-    async def idle_monitor():
-        try:
-            while True:
-                await asyncio.sleep(60)
-        except asyncio.CancelledError:
-            return
-
-    monkeypatch.setattr(
-        "app.main.device_monitor",
-        idle_monitor,
-    )
-
-    def override_get_db():
-        session = session_factory()
-        try:
-            yield session
-        finally:
-            session.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    try:
-        with TestClient(app) as client:
-            yield client
-    finally:
-        app.dependency_overrides.clear()
 
 
 def _login(api, email, password=PASSWORD):

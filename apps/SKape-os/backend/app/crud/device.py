@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -82,17 +83,26 @@ def create_device(
     )
 
     db.add(db_device)
-    db.commit()
-    db.refresh(db_device)
 
-    log_activity(
-        db=db,
-        action="created",
-        entity="device",
-        entity_id=db_device.id,
-        user_id=user_id,
-        organization_id=organization_id,
-    )
+    try:
+        db.flush()
+
+        log_activity(
+            db=db,
+            action="created",
+            entity="device",
+            entity_id=db_device.id,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(db_device)
 
     return db_device
 
@@ -165,23 +175,30 @@ def update_device(
     # -------------------------------------------------
 
     for key, value in update_data.items():
-
         if isinstance(value, str):
             value = value.strip()
 
         setattr(device, key, value)
 
-    db.commit()
-    db.refresh(device)
+    try:
+        db.flush()
 
-    log_activity(
-        db=db,
-        action="updated",
-        entity="device",
-        entity_id=device.id,
-        user_id=user_id,
-        organization_id=organization_id,
-    )
+        log_activity(
+            db=db,
+            action="updated",
+            entity="device",
+            entity_id=device.id,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(device)
 
     return device
 
@@ -202,20 +219,38 @@ def delete_device(
         return None
 
     deleted_device_id = device.id
-
-    db.delete(device)
-    db.commit()
-
-    log_activity(
-        db=db,
-        action="deleted",
-        entity="device",
-        entity_id=deleted_device_id,
-        user_id=user_id,
-        organization_id=organization_id,
+    snapshot = SimpleNamespace(
+        id=device.id,
+        device_id=device.device_id,
+        name=device.name,
+        device_type=device.device_type,
+        status=device.status,
+        organization_id=device.organization_id,
+        asset_id=device.asset_id,
+        last_seen_at=device.last_seen_at,
+        is_active=device.is_active,
+        created_at=device.created_at,
+        updated_at=device.updated_at,
     )
 
-    return device
+    try:
+        log_activity(
+            db=db,
+            action="deleted",
+            entity="device",
+            entity_id=deleted_device_id,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+
+        db.delete(device)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return snapshot
 
 
 def heartbeat_device(
@@ -262,6 +297,7 @@ def heartbeat_device(
     return device
 
 
+
 def mark_stale_devices_offline(
     db: Session,
     timeout_seconds: int = 30,
@@ -280,7 +316,6 @@ def mark_stale_devices_offline(
     stale_devices = []
 
     for device in online_devices:
-
         last_seen = device.last_seen_at
 
         if last_seen is None:
@@ -296,41 +331,9 @@ def mark_stale_devices_offline(
         ).total_seconds()
 
         if age_seconds > timeout_seconds:
-
             device.status = "offline"
             stale_devices.append(device)
 
-            existing_alert = (
-                db.query(Alert)
-                .filter(
-                    Alert.device_id == device.id,
-                    Alert.alert_type == "device_offline",
-                    Alert.is_resolved.is_(False),
-                )
-                .first()
-            )
-
-            if existing_alert is None:
-
-                offline_alert = Alert(
-                    device_id=device.id,
-                    organization_id=device.organization_id,
-                    severity="critical",
-                    alert_type="device_offline",
-                    title="Device Offline",
-                    message=(
-                        f"Device {device.device_id} has not "
-                        f"sent a heartbeat for "
-                        f"{age_seconds:.0f} seconds."
-                    ),
-                )
-
-                db.add(offline_alert)
-
-    if stale_devices:
-        db.commit()
-
-        for device in stale_devices:
-            db.refresh(device)
-
+    # Transaction ownership belongs to the caller.
+    # The caller creates alerts and commits all changes.
     return stale_devices

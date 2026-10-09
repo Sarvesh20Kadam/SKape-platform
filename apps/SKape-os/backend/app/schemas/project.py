@@ -17,3 +17,6 @@ class ProjectResponse(BaseModel):
     name: str
     description: str
     status: str
+
+    class Config:
+        from_attributes = True

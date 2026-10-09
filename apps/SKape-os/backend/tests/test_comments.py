@@ -6,15 +6,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("ALGORITHM", "HS256")
 
-import asyncio
-
 import pytest
-from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import event
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from sqlalchemy import create_engine
 
 import app.models  # noqa: F401
 from app.crud.activity import log_activity as write_activity
@@ -24,7 +17,6 @@ from app.crud.comment import (
     get_comments,
     update_comment,
 )
-from app.database import Base, get_db
 from app.dependencies import get_current_user
 from app.exceptions import ForbiddenException
 from app.main import app
@@ -35,40 +27,6 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.comment import CommentCreate, CommentUpdate
-
-
-@pytest.fixture
-def session_factory():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-    @event.listens_for(engine, "connect")
-    def _enable_foreign_keys(dbapi_connection, _record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    Base.metadata.create_all(bind=engine)
-    factory = sessionmaker(
-        bind=engine,
-        autocommit=False,
-        autoflush=False,
-    )
-
-    yield factory
-    engine.dispose()
-
-
-@pytest.fixture
-def db(session_factory):
-    session = session_factory()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 def _org(db, name, slug):
@@ -162,36 +120,6 @@ def world(db):
             for role, user in users.items()
         },
     )
-
-
-@pytest.fixture
-def api(session_factory, monkeypatch):
-    async def idle_monitor():
-        try:
-            while True:
-                await asyncio.sleep(60)
-        except asyncio.CancelledError:
-            return
-
-    monkeypatch.setattr(
-        "app.main.device_monitor",
-        idle_monitor,
-    )
-
-    def override_get_db():
-        session = session_factory()
-        try:
-            yield session
-        finally:
-            session.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    try:
-        with TestClient(app) as client:
-            yield client
-    finally:
-        app.dependency_overrides.clear()
 
 
 def _as(actor):
