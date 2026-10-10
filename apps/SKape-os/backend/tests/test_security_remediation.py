@@ -402,7 +402,7 @@ def test_heartbeat_and_telemetry_recheck_the_locked_row(
     other = session_factory()
     other.execute(
         text(
-            "UPDATE devices SET is_active = 0 WHERE id = :id"
+            "UPDATE devices SET is_active = false WHERE id = :id"
         ),
         {"id": device.id},
     )

@@ -78,11 +78,21 @@ jobs:
           python -m pip install \
             "pytest==9.1.1" \
             "httpx==0.28.1"
-      - name: Run the PostgreSQL device-monitor tests
+      - name: Run PostgreSQL API and integration tests
         env:
           DATABASE_URL: sqlite://
           SECRET_KEY: skape-test-jwt-signing-secret-value
           ALGORITHM: HS256
           SKAPE_TEST_DATABASE_URL: postgresql+psycopg2://skape_ci:skape_ci@localhost:5432/skape_ci_admin
           SKAPE_REQUIRE_POSTGRES: "1"
-        run: python -m pytest -q tests/test_device_monitor_postgres.py
+          SKAPE_TEST_POSTGRES_API: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_workflows.py \
+            tests/test_hardening.py \
+            tests/test_security_remediation.py \
+            tests/test_comments.py \
+            tests/test_tenant_security.py \
+            tests/test_readiness_schema.py \
+            tests/test_device_monitor_postgres.py \
+            -k "not test_organization_active_migration_backfills_nulls and not test_email_uniqueness_migration_rejects_case_variants"
