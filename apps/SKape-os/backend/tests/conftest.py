@@ -2,7 +2,10 @@ import asyncio
 import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
-os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault(
+    "SECRET_KEY",
+    "skape-test-jwt-signing-secret-value",
+)
 os.environ.setdefault("ALGORITHM", "HS256")
 
 import pytest

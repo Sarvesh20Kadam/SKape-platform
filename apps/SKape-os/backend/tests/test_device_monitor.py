@@ -265,14 +265,15 @@ def test_online_without_last_seen_is_rejected_and_not_stale(
 ):
     device = _device(db, world["org_a"], "pump-03")
 
-    with pytest.raises(ValueError, match=ONLINE_REQUIRES_SEEN):
-        update_device(
-            db=db,
-            device_id=device.id,
-            organization_id=world["org_a"],
-            user_id=world["owner_id"],
-            updated_device=DeviceUpdate(status="online"),
-        )
+    ignored = update_device(
+        db=db,
+        device_id=device.id,
+        organization_id=world["org_a"],
+        user_id=world["owner_id"],
+        updated_device=DeviceUpdate(status="online"),
+    )
+    assert ignored.status == "offline"
+    assert ignored.last_seen_at is None
 
     invalid = Device(
         device_id="pump-04",
@@ -356,10 +357,11 @@ def test_update_online_requires_last_seen_on_the_api(api, world):
     updated = api.put(
         f"/api/v1/devices/{device_pk}",
         headers=headers,
-        json={"status": "online"},
+        json={"status": "online", "last_seen_at": None},
     )
-    assert updated.status_code == 400
-    assert updated.json()["detail"] == ONLINE_REQUIRES_SEEN
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "offline"
+    assert updated.json()["last_seen_at"] is None
 
 
 def test_heartbeat_does_not_lose_to_a_stale_monitor_read(

@@ -16,9 +16,14 @@ def create_telemetry(
     locked = (
         db.query(Device)
         .filter(Device.id == device.id)
+        .populate_existing()
         .with_for_update()
         .one()
     )
+
+    if not locked.is_active:
+        db.rollback()
+        raise ValueError("Device is inactive")
 
     now = datetime.now(timezone.utc)
 
@@ -37,7 +42,6 @@ def create_telemetry(
     # is communicating with SKape OS.
     locked.status = "online"
     locked.last_seen_at = now
-    locked.is_active = True
 
     db.flush()
 

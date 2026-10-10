@@ -3,6 +3,7 @@ import secrets
 
 from sqlalchemy.orm import Session
 
+from app.crud.activity import log_activity
 from app.crud.user import (
     get_user_by_email,
     normalize_email,
@@ -20,10 +21,34 @@ ALLOWED_INVITATION_ROLES = {
 }
 
 
+def _commit_with_audit(
+    db: Session,
+    *,
+    action: str,
+    entity_id: int,
+    user_id: int,
+    organization_id: int,
+):
+    try:
+        log_activity(
+            db=db,
+            action=action,
+            entity="invitation",
+            entity_id=entity_id,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
 def create_invitation(
     db: Session,
     invitation: InvitationCreate,
     organization_id: int,
+    actor_user_id: int,
 ):
     if invitation.role not in ALLOWED_INVITATION_ROLES:
         raise ValueError("Invalid invitation role.")
@@ -45,7 +70,14 @@ def create_invitation(
     )
 
     db.add(db_invitation)
-    db.commit()
+    db.flush()
+    _commit_with_audit(
+        db,
+        action="created",
+        entity_id=db_invitation.id,
+        user_id=actor_user_id,
+        organization_id=organization_id,
+    )
     db.refresh(db_invitation)
 
     return db_invitation
@@ -99,6 +131,7 @@ def get_invitation_by_token(
 def revoke_invitation(
     db: Session,
     invitation: Invitation,
+    actor_user_id: int,
 ):
     if invitation.status == "accepted":
         raise ValueError(
@@ -112,7 +145,13 @@ def revoke_invitation(
 
     invitation.status = "revoked"
 
-    db.commit()
+    _commit_with_audit(
+        db,
+        action="revoked",
+        entity_id=invitation.id,
+        user_id=actor_user_id,
+        organization_id=invitation.organization_id,
+    )
     db.refresh(invitation)
 
     return invitation
@@ -121,6 +160,7 @@ def revoke_invitation(
 def resend_invitation(
     db: Session,
     invitation: Invitation,
+    actor_user_id: int,
 ):
     if invitation.status == "accepted":
         raise ValueError(
@@ -136,7 +176,13 @@ def resend_invitation(
 
     invitation.status = "pending"
 
-    db.commit()
+    _commit_with_audit(
+        db,
+        action="resent",
+        entity_id=invitation.id,
+        user_id=actor_user_id,
+        organization_id=invitation.organization_id,
+    )
     db.refresh(invitation)
 
     return invitation
@@ -180,10 +226,17 @@ def create_user_from_invitation(
     )
 
     db.add(user)
+    db.flush()
 
     invitation.status = "accepted"
 
-    db.commit()
+    _commit_with_audit(
+        db,
+        action="accepted",
+        entity_id=invitation.id,
+        user_id=user.id,
+        organization_id=invitation.organization_id,
+    )
     db.refresh(user)
 
     return user

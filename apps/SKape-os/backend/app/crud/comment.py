@@ -226,6 +226,7 @@ def delete_comment(
     comment_id: int,
     organization_id: int,
     user_id: int,
+    user_role: str,
 ):
     comment = (
         db.query(Comment)
@@ -238,6 +239,14 @@ def delete_comment(
 
     if comment is None:
         return None
+
+    if comment.user_id != user_id and user_role not in {
+        "owner",
+        "admin",
+    }:
+        raise ForbiddenException(
+            "You can only delete your own comments."
+        )
 
     # Capture the response before commit expires the deleted row.
     snapshot = _snapshot(comment)

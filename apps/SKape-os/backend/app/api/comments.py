@@ -152,16 +152,19 @@ def delete(
             "owner",
             "admin",
             "manager",
+            "employee",
         )
     ),
 ):
-    # Owners, admins, and managers may delete any comment
-    # in their organization. Employees are rejected here.
+    # Delete follows the edit rule: owner and admin may
+    # delete any comment in the organization. Manager and
+    # employee may delete only their own.
     deleted = delete_comment(
         db=db,
         comment_id=comment_id,
         organization_id=current_user.organization_id,
         user_id=current_user.id,
+        user_role=current_user.role,
     )
 
     if deleted is None:

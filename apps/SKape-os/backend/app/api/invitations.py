@@ -19,6 +19,7 @@ from app.crud.invitation import (
     resend_invitation,
 )
 from app.crud.user import get_user_by_email
+from app.security import validate_password_length
 
 from app.schemas.invitation import (
     InvitationAccept,
@@ -56,6 +57,18 @@ def create_new_invitation(
     ),
 ):
     email = invitation.email.strip().lower()
+
+    if (
+        invitation.role == "admin"
+        and current_user.role != "owner"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You don't have permission to "
+                "perform this action."
+            ),
+        )
 
     # =====================================================
     # CHECK IF USER ALREADY EXISTS
@@ -103,6 +116,7 @@ def create_new_invitation(
                 role=invitation.role,
             ),
             current_user.organization_id,
+            current_user.id,
         )
 
     except ValueError as exc:
@@ -170,6 +184,7 @@ def revoke_invitation_endpoint(
         revoke_invitation(
             db,
             invitation,
+            current_user.id,
         )
 
     except ValueError as exc:
@@ -218,6 +233,7 @@ def resend_invitation_endpoint(
         return resend_invitation(
             db,
             invitation,
+            current_user.id,
         )
 
     except ValueError as exc:
@@ -305,13 +321,12 @@ def accept_invitation(
     # VALIDATE PASSWORD
     # =====================================================
 
-    if len(request.password) < 8:
+    try:
+        validate_password_length(request.password)
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Password must contain at least "
-                "8 characters."
-            ),
+            detail=str(exc),
         )
 
     # =====================================================

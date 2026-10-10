@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.crud.activity import log_activity
 from app.models.alert import Alert
 
 
@@ -129,6 +130,7 @@ def create_alert(
 def resolve_alert(
     db: Session,
     alert: Alert,
+    user_id: int,
 ):
     if alert.is_resolved:
         return alert
@@ -136,7 +138,20 @@ def resolve_alert(
     alert.is_resolved = True
     alert.resolved_at = datetime.now(timezone.utc)
 
-    db.commit()
+    try:
+        log_activity(
+            db=db,
+            action="resolved",
+            entity="alert",
+            entity_id=alert.id,
+            user_id=user_id,
+            organization_id=alert.organization_id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
     db.refresh(alert)
 
     return alert

@@ -1,4 +1,5 @@
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
@@ -9,6 +10,12 @@ from app.schemas.user import UserCreate
 from app.security import (
     hash_password,
     verify_password,
+)
+
+# Verified when no user matches so missing accounts take a bcrypt
+# check too. This does not make the response time identical.
+_MISSING_USER_HASH = hash_password(
+    "skape-missing-user-timing"
 )
 
 from app.crud.activity import log_activity
@@ -51,7 +58,7 @@ def create_user(
 
     if existing_org:
         raise ValueError(
-            "Organization already exists"
+            "Registration could not be completed."
         )
 
     organization = Organization(
@@ -60,33 +67,40 @@ def create_user(
         is_active=True,
     )
 
-    db.add(organization)
-    db.flush()
+    try:
+        db.add(organization)
+        db.flush()
 
-    db_user = User(
-        name=user.name,
-        email=normalize_email(user.email),
-        hashed_password=hash_password(
-            user.password
-        ),
-        role="owner",
-        is_active=True,
-        organization_id=organization.id,
-    )
+        db_user = User(
+            name=user.name,
+            email=normalize_email(user.email),
+            hashed_password=hash_password(
+                user.password
+            ),
+            role="owner",
+            is_active=True,
+            organization_id=organization.id,
+        )
 
-    db.add(db_user)
-    db.flush()
+        db.add(db_user)
+        db.flush()
 
-    log_activity(
-        db=db,
-        action="created",
-        entity="organization",
-        entity_id=organization.id,
-        user_id=db_user.id,
-        organization_id=organization.id,
-    )
+        log_activity(
+            db=db,
+            action="created",
+            entity="organization",
+            entity_id=organization.id,
+            user_id=db_user.id,
+            organization_id=organization.id,
+        )
 
-    db.commit()
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError(
+            "Registration could not be completed."
+        )
+
     db.refresh(db_user)
 
     return db_user
@@ -120,6 +134,10 @@ def authenticate_user(
     )
 
     if not user:
+        verify_password(
+            password,
+            _MISSING_USER_HASH,
+        )
         return None
 
     if not verify_password(

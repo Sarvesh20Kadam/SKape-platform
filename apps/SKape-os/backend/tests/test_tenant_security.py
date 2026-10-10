@@ -4,7 +4,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
-os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault(
+    "SECRET_KEY",
+    "skape-test-jwt-signing-secret-value",
+)
 os.environ.setdefault("ALGORITHM", "HS256")
 
 import pytest
@@ -1071,7 +1074,7 @@ def test_case_variant_registration_is_rejected_by_the_database(
         },
     )
     assert second.status_code == 400
-    assert _detail(second) == "Email already registered"
+    assert _detail(second) == "Registration could not be completed."
 
     session = session_factory()
     try:

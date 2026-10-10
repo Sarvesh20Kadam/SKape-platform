@@ -3,7 +3,10 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
-os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault(
+    "SECRET_KEY",
+    "skape-test-jwt-signing-secret-value",
+)
 os.environ.setdefault("ALGORITHM", "HS256")
 
 import pytest
@@ -224,7 +227,8 @@ def test_create_update_delete_and_audit(db, world):
         db=db,
         comment_id=created.id,
         organization_id=world.org_a,
-        user_id=world.users["manager"].id,
+        user_id=world.users["owner"].id,
+        user_role="owner",
     )
 
     assert deleted.content == "revised"
@@ -331,6 +335,7 @@ def test_cross_organization_isolation(db, world):
         comment_id=comment.id,
         organization_id=world.org_b,
         user_id=other.id,
+        user_role="owner",
     ) is None
 
     stored = db.get(Comment, comment.id)
@@ -461,6 +466,7 @@ def test_audit_failure_rolls_back_create_update_and_delete(
             comment_id=comment.id,
             organization_id=world.org_a,
             user_id=owner.id,
+            user_role="owner",
         )
 
     check = session_factory()
@@ -588,14 +594,14 @@ def test_api_crud_validation_and_tenant_boundaries(
     assert edited.status_code == 200
     assert edited.json()["content"] == "owner edit"
 
-    _as(world.users["employee"])
-    employee_delete = api.delete(
+    _as(world.users["manager"])
+    manager_delete = api.delete(
         f"/api/v1/comments/{comment_id}",
     )
-    assert employee_delete.status_code == 403
-    assert "permission" in _error_text(employee_delete)
+    assert manager_delete.status_code == 403
+    assert "only delete your own" in _error_text(manager_delete)
 
-    _as(world.users["manager"])
+    _as(world.users["employee"])
     deleted = api.delete(f"/api/v1/comments/{comment_id}")
     assert deleted.status_code == 200
     assert deleted.json()["content"] == "owner edit"

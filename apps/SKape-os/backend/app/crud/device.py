@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
@@ -106,7 +107,7 @@ def create_device(
 
     if existing_device is not None:
         raise ValueError(
-            "Device ID already exists"
+            "Device could not be created."
         )
 
     status = _normalized_status(device.status)
@@ -141,6 +142,12 @@ def create_device(
         )
 
         db.commit()
+
+    except IntegrityError:
+        db.rollback()
+        raise ValueError(
+            "Device could not be created."
+        )
 
     except Exception:
         db.rollback()
@@ -202,6 +209,13 @@ def update_device(
     update_data = updated_device.model_dump(
         exclude_unset=True,
     )
+
+    # Contact state comes from heartbeat and telemetry.
+    update_data.pop("status", None)
+    update_data.pop("last_seen_at", None)
+
+    if not update_data:
+        return device
 
     # -------------------------------------------------
     # Validate asset if assignment changes
@@ -316,6 +330,7 @@ def heartbeat_device(
         .filter(
             Device.device_id == device_id,
         )
+        .populate_existing()
         .with_for_update()
         .first()
     )
@@ -323,9 +338,12 @@ def heartbeat_device(
     if device is None:
         return None
 
+    if not device.is_active:
+        db.rollback()
+        raise ValueError("Device is inactive")
+
     device.status = "online"
     device.last_seen_at = func.now()
-    device.is_active = True
 
     db.flush()
 

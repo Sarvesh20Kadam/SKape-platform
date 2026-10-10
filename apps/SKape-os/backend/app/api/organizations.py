@@ -10,7 +10,6 @@ from app.dependencies import (
 from app.permissions import require_role
 
 from app.crud.organization import (
-    create_organization,
     get_organization_by_id,
     update_organization,
     delete_organization,
@@ -49,10 +48,14 @@ def create(
         require_role("owner")
     ),
 ):
-    return create_organization(
-        db=db,
-        organization=organization,
-        user_id=current_user.id,
+    # Registration creates the caller's own organization.
+    # This route must not create a second tenant for them.
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            "You don't have permission to "
+            "perform this action."
+        ),
     )
 
 

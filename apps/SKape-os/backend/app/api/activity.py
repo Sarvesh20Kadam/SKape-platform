@@ -36,7 +36,6 @@ def get_all(
             "owner",
             "admin",
             "manager",
-            "employee",
         )
     ),
 ):
