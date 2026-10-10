@@ -30,7 +30,9 @@ the restore duration. It does not impose a maximum time.
 A successful logical restore does not establish point-in-time recovery,
 write-ahead-log archiving, off-site retention, an encryption-at-rest
 policy, or production recovery readiness. No backup schedule, retention
-period, or hosting platform is defined here.
+period, or hosting platform is defined here. A separate synthetic
+point-in-time proof is described in `postgres-pitr.md`. Passing that
+proof is not production recovery readiness either.
 
 The printed durations do not prove a proposed four-hour recovery time
 objective or a proposed 24-hour recovery point objective. They describe
