@@ -38,7 +38,7 @@ from app.exception_handlers import (
 
 from app.log_safety import configure_logging, get_logger
 from app.request_context import RequestContextMiddleware
-from app.runtime_config import api_docs_enabled, cors_origins
+from app.runtime_config import resolve_runtime_configuration
 from app.services.device_monitor import device_monitor
 
 
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
 
 def create_app():
     configure_logging()
-    docs_enabled = api_docs_enabled()
+    docs_enabled, origins = resolve_runtime_configuration()
     application = FastAPI(
         title=settings.APP_NAME,
         version=settings.VERSION,
@@ -81,7 +81,7 @@ def create_app():
 
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=cors_origins(),
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
