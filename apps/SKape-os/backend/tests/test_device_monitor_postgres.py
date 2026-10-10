@@ -1,7 +1,8 @@
 """PostgreSQL concurrency tests for device monitoring.
 
 These tests use disposable databases created from SKAPE_TEST_DATABASE_URL.
-They never read alembic.ini and never migrate the database named in that URL.
+Alembic reads its script location from alembic.ini, then the test replaces
+sqlalchemy.url. Migrations run only against that new database.
 
 Run this module serially. A pytest-xdist worker fails the module.
 """
@@ -10,6 +11,7 @@ import os
 import re
 import sys
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -24,7 +26,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine.url import make_url
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -46,6 +48,7 @@ FORBIDDEN_DATABASES = frozenset(
 LOCK_WAIT_SECONDS = 5.0
 INDEX_NAME = "uq_alerts_unresolved_device_offline"
 CHECK_NAME = "ck_devices_online_requires_last_seen"
+_SECRET_URL = re.compile(r"postgresql(?:\+\w+)?://\S+", re.IGNORECASE)
 
 _URL = os.environ.get("SKAPE_TEST_DATABASE_URL", "").strip()
 _REQUIRE = os.environ.get("SKAPE_REQUIRE_POSTGRES") == "1"
@@ -74,6 +77,8 @@ class Lab:
         self.name = name
         self.sessions = []
         self.connections = []
+        self.workers = []
+        self.releases = []
         self._session_factory = sessionmaker(
             bind=engine,
             autocommit=False,
@@ -92,21 +97,38 @@ class Lab:
         self.connections.append(connection)
         return connection
 
-    def close_sessions(self):
+    def track(self, thread, box, release):
+        self.workers.append((thread, box))
+        if release not in self.releases:
+            self.releases.append(release)
+
+    def close(self):
+        """Roll back and close every session and referee connection.
+
+        Listener removal happens first so a pause hook cannot block
+        cleanup. Errors are returned so the caller can attach them to
+        the original test failure.
+        """
+
+        errors = []
         for db in self.sessions:
+            errors.extend(_remove_listeners(db))
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                errors.append(exc)
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                errors.append(exc)
         for connection in self.connections:
             try:
                 connection.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                errors.append(exc)
+        self.sessions.clear()
+        self.connections.clear()
+        return errors
 
 
 def _assert_safe_admin_url(url):
@@ -148,24 +170,106 @@ def _assert_identity(connection, expected_name):
         )
 
 
+def _error_note(exc):
+    message = _SECRET_URL.sub("postgresql://...", str(exc))
+    return f"cleanup: {type(exc).__name__}: {message}"
+
+
+def _for_report(exc):
+    if _SECRET_URL.search(str(exc)):
+        return RuntimeError(_error_note(exc))
+    return exc
+
+
+def _surface(errors, pending=None):
+    """Raise cleanup errors, or attach them to the original failure."""
+
+    if pending is None:
+        pending = sys.exc_info()[1]
+    if not errors:
+        return
+    if pending is not None:
+        for error in errors:
+            pending.add_note(_error_note(error))
+        return
+    reported = [_for_report(error) for error in errors]
+    if len(reported) == 1:
+        raise reported[0]
+    raise ExceptionGroup(
+        "disposable database cleanup failed",
+        reported,
+    )
+
+
+def _assert_admin_unchanged(admin_engine, database, marker):
+    with admin_engine.connect() as admin:
+        current = admin.execute(
+            text("SELECT current_database()")
+        ).scalar()
+        if current != database or current in FORBIDDEN_DATABASES:
+            raise RuntimeError(
+                f"admin connection changed to {current!r}"
+            )
+        if DISPOSABLE_NAME.fullmatch(current or ""):
+            raise RuntimeError(
+                f"admin connection is a disposable database {current!r}"
+            )
+        if _admin_marker(admin) != marker:
+            raise RuntimeError(
+                "admin database schema marker changed"
+            )
+
+
+def _database_in_use(exc):
+    message = str(exc).lower()
+    return (
+        "being accessed by other users" in message
+        or "object_in_use" in message
+    )
+
+
 def _drop_database(admin_engine, name):
     if not DISPOSABLE_NAME.fullmatch(name):
         raise RuntimeError(
             f"refusing to drop database {name!r}"
         )
-    with admin_engine.connect() as connection:
-        connection.execute(
-            text(
-                "SELECT pg_terminate_backend(pid) "
-                "FROM pg_stat_activity "
-                "WHERE datname = :name "
-                "AND pid <> pg_backend_pid()"
-            ),
-            {"name": name},
-        )
-        connection.execute(
-            text(f'DROP DATABASE IF EXISTS "{name}"')
-        )
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            with admin_engine.connect() as connection:
+                current = connection.execute(
+                    text("SELECT current_database()")
+                ).scalar()
+                if (
+                    current in FORBIDDEN_DATABASES
+                    or current == name
+                    or DISPOSABLE_NAME.fullmatch(current or "")
+                ):
+                    raise RuntimeError(
+                        f"refusing to drop from connection {current!r}"
+                    )
+                connection.execute(
+                    text(
+                        "SELECT pg_terminate_backend(pid) "
+                        "FROM pg_stat_activity "
+                        "WHERE datname = :name "
+                        "AND pid <> pg_backend_pid()"
+                    ),
+                    {"name": name},
+                )
+                connection.execute(
+                    text(f'DROP DATABASE IF EXISTS "{name}"')
+                )
+            return
+        except RuntimeError:
+            raise
+        except OperationalError as exc:
+            if (
+                not _database_in_use(exc)
+                or time.monotonic() >= deadline
+            ):
+                raise
+            time.sleep(0.1)
 
 
 @contextmanager
@@ -180,13 +284,18 @@ def disposable_database(migrate_to):
         )
 
     created = False
-    admin_engine = create_engine(
-        _URL,
-        isolation_level="AUTOCOMMIT",
-        poolclass=NullPool,
-    )
+    marker = None
+    marker_known = False
+    admin_engine = None
     engine = None
+    lab = None
+    body_error = None
     try:
+        admin_engine = create_engine(
+            _URL,
+            isolation_level="AUTOCOMMIT",
+            poolclass=NullPool,
+        )
         with admin_engine.connect() as admin:
             current = admin.execute(
                 text("SELECT current_database()")
@@ -196,6 +305,7 @@ def disposable_database(migrate_to):
                     f"refusing admin connection to {current!r}"
                 )
             marker = _admin_marker(admin)
+            marker_known = True
             admin.execute(text(f'CREATE DATABASE "{name}"'))
             created = True
 
@@ -217,26 +327,49 @@ def disposable_database(migrate_to):
         lab = Lab(engine, target_url, name)
         try:
             yield lab
-        finally:
-            lab.close_sessions()
-
-        with admin_engine.connect() as admin:
-            if admin.execute(
-                text("SELECT current_database()")
-            ).scalar() != parsed.database:
-                raise RuntimeError(
-                    "admin connection changed databases"
-                )
-            if _admin_marker(admin) != marker:
-                raise RuntimeError(
-                    "admin database schema marker changed"
-                )
+        except BaseException as exc:
+            body_error = exc
+            raise
     finally:
+        errors = []
+        if marker_known and admin_engine is not None:
+            try:
+                _assert_admin_unchanged(
+                    admin_engine,
+                    parsed.database,
+                    marker,
+                )
+            except Exception as exc:
+                errors.append(exc)
+        if lab is not None:
+            errors.extend(
+                _collect_workers(lab.workers, lab.releases, lab)
+            )
+            if any(thread.is_alive() for thread, _box in lab.workers):
+                errors.append(
+                    RuntimeError(
+                        "sessions and event listeners were left in "
+                        "place because a worker was still running"
+                    )
+                )
+            else:
+                errors.extend(lab.close())
         if engine is not None:
-            engine.dispose()
-        if created:
-            _drop_database(admin_engine, name)
-        admin_engine.dispose()
+            try:
+                engine.dispose()
+            except Exception as exc:
+                errors.append(exc)
+        if created and admin_engine is not None:
+            try:
+                _drop_database(admin_engine, name)
+            except Exception as exc:
+                errors.append(exc)
+        if admin_engine is not None:
+            try:
+                admin_engine.dispose()
+            except Exception as exc:
+                errors.append(exc)
+        _surface(errors, body_error)
 
 
 def _alembic_config(url, name):
@@ -422,10 +555,24 @@ def _seed_stale_device(db, organization, device_key):
     return device
 
 
+def _listen(db, identifier, fn):
+    event.listen(db, identifier, fn)
+    db.info.setdefault("_skape_listeners", []).append((identifier, fn))
+
+
+def _remove_listeners(db):
+    errors = []
+    for identifier, fn in db.info.pop("_skape_listeners", []):
+        try:
+            event.remove(db, identifier, fn)
+        except Exception as exc:
+            errors.append(exc)
+    return errors
+
+
 def _pause_after_flush(db, paused, release):
     state = {"fired": False}
 
-    @event.listens_for(db, "after_flush")
     def _pause(_session, _flush_context):
         if state["fired"]:
             return
@@ -434,6 +581,7 @@ def _pause_after_flush(db, paused, release):
         if not release.wait(15):
             raise TimeoutError("lock holder was not released")
 
+    _listen(db, "after_flush", _pause)
     return _pause
 
 
@@ -452,7 +600,6 @@ def _pause_after_device_update(db, paused, release):
 
     state = {"fired": False}
 
-    @event.listens_for(db, "do_orm_execute")
     def _pause(orm_execute_state):
         if state["fired"] or not orm_execute_state.is_update:
             return
@@ -466,6 +613,7 @@ def _pause_after_device_update(db, paused, release):
             raise TimeoutError("lock holder was not released")
         return result
 
+    _listen(db, "do_orm_execute", _pause)
     return _pause
 
 
@@ -478,34 +626,82 @@ def _start(fn):
         except BaseException as exc:
             box["error"] = exc
 
-    thread = threading.Thread(target=target)
+    thread = threading.Thread(
+        target=target,
+        name="skape-pg-worker",
+        daemon=True,
+    )
     thread.start()
     return thread, box
 
 
-def _join_workers(pairs, releases, lab):
+def _take_worker_error(box, errors):
+    error = box.get("error")
+    if error is None or box.get("reported"):
+        return
+    box["reported"] = True
+    errors.append(error)
+
+
+def _terminate_other_backends(lab):
+    try:
+        with lab.engine.connect().execution_options(
+            isolation_level="AUTOCOMMIT"
+        ) as connection:
+            _assert_identity(connection, lab.name)
+            connection.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) "
+                    "FROM pg_stat_activity "
+                    "WHERE datname = current_database() "
+                    "AND pid <> pg_backend_pid()"
+                )
+            )
+    except Exception as exc:
+        return [exc]
+    return []
+
+
+def _collect_workers(pairs, releases, lab):
+    """Unblock and join workers. Return errors without raising them."""
+
+    signaled = []
     for release in releases:
+        if release in signaled:
+            continue
         release.set()
-    pending = []
+        signaled.append(release)
     errors = []
+    pending = []
     for thread, box in pairs:
         thread.join(15)
         if thread.is_alive():
             pending.append((thread, box))
-        elif "error" in box:
-            errors.append(box["error"])
-    if pending:
-        lab.close_sessions()
-        for thread, box in pending:
-            thread.join(10)
-            if thread.is_alive():
-                pytest.fail(
-                    "worker still running after its session was closed"
-                )
-            if "error" in box:
-                errors.append(box["error"])
-    if errors:
-        raise errors[0]
+        else:
+            _take_worker_error(box, errors)
+    if not pending or lab is None:
+        return errors
+    errors.extend(_terminate_other_backends(lab))
+    still = []
+    for thread, box in pending:
+        thread.join(10)
+        if thread.is_alive():
+            still.append((thread, box))
+        else:
+            _take_worker_error(box, errors)
+    for _thread, box in still:
+        errors.append(
+            RuntimeError(
+                "worker still running after the release signal and "
+                "backend termination; it cannot be force-stopped"
+            )
+        )
+        _take_worker_error(box, errors)
+    return errors
+
+
+def _join_workers(pairs, releases, lab):
+    _surface(_collect_workers(pairs, releases, lab))
 
 
 def _wait_for_lock(referee, waiter_pid, holder_pid, wait_event):
@@ -627,9 +823,11 @@ def test_heartbeat_lock_keeps_a_newer_contact_online():
 
             heartbeat_thread, heartbeat_box = _start(run_heartbeat)
             workers.append((heartbeat_thread, heartbeat_box))
+            lab.track(heartbeat_thread, heartbeat_box, release)
             _wait_until(paused, "heartbeat flush")
             monitor_thread, monitor_box = _start(run_monitor)
             workers.append((monitor_thread, monitor_box))
+            lab.track(monitor_thread, monitor_box, release)
             _wait_until(monitor_started, "monitor pid")
             _wait_for_lock(
                 referee,
@@ -683,9 +881,11 @@ def test_monitor_lock_commits_offline_then_heartbeat_resolves_it():
 
             monitor_thread, monitor_box = _start(run_monitor)
             workers.append((monitor_thread, monitor_box))
+            lab.track(monitor_thread, monitor_box, release)
             _wait_until(paused, "stale update")
             heartbeat_thread, heartbeat_box = _start(run_heartbeat)
             workers.append((heartbeat_thread, heartbeat_box))
+            lab.track(heartbeat_thread, heartbeat_box, release)
             _wait_until(heartbeat_started, "heartbeat pid")
             _wait_for_lock(
                 referee,
@@ -776,9 +976,11 @@ def _open_alert_race(lab, slug, hold):
         waiter_started = threading.Event()
         holder_thread, holder_box = _start(run_holder)
         workers.append((holder_thread, holder_box))
+        lab.track(holder_thread, holder_box, release)
         _wait_until(paused, "holder alert flush")
         waiter_thread, waiter_box = _start(run_waiter)
         workers.append((waiter_thread, waiter_box))
+        lab.track(waiter_thread, waiter_box, release)
         _wait_until(waiter_started, "waiter pid")
         _wait_for_lock(
             referee,
@@ -894,9 +1096,11 @@ def test_uncommitted_alert_blocks_stale_update_until_commit():
 
             inserter_thread, inserter_box = _start(run_inserter)
             workers.append((inserter_thread, inserter_box))
+            lab.track(inserter_thread, inserter_box, release)
             _wait_until(paused, "competing alert flush")
             monitor_thread, monitor_box = _start(run_monitor)
             workers.append((monitor_thread, monitor_box))
+            lab.track(monitor_thread, monitor_box, release)
             _wait_until(monitor_started, "monitor pid")
             _wait_for_lock(
                 referee,
@@ -1253,3 +1457,103 @@ def test_postgres_migration_refuses_online_device_without_last_seen():
         db.commit()
         db.close()
         _refuse_upgrade(lab, "Rows were not changed")
+
+
+def _disposable_database_names():
+    engine = create_engine(
+        _URL,
+        isolation_level="AUTOCOMMIT",
+        poolclass=NullPool,
+    )
+    try:
+        with engine.connect() as connection:
+            current = connection.execute(
+                text("SELECT current_database()")
+            ).scalar()
+            if (
+                current in FORBIDDEN_DATABASES
+                or DISPOSABLE_NAME.fullmatch(current or "")
+            ):
+                raise RuntimeError(
+                    f"refusing to list databases from {current!r}"
+                )
+            rows = connection.execute(
+                text(
+                    "SELECT datname FROM pg_database "
+                    "WHERE datname ~ '^skape_test_[0-9a-f]{16}$' "
+                    "ORDER BY datname"
+                )
+            ).scalars()
+            return tuple(rows)
+    finally:
+        engine.dispose()
+
+
+def test_drop_error_keeps_the_body_exception_and_drops_the_database(
+    monkeypatch,
+):
+    original_drop = _drop_database
+
+    def fail_drop(admin_engine, name):
+        original_drop(admin_engine, name)
+        raise RuntimeError("drop failed")
+
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_drop_database",
+        fail_drop,
+    )
+    before = _disposable_database_names()
+    with pytest.raises(RuntimeError, match="body failed") as caught:
+        with disposable_database(None):
+            raise RuntimeError("body failed")
+    notes = getattr(caught.value, "__notes__", [])
+    assert any("drop failed" in note for note in notes)
+    assert _disposable_database_names() == before
+
+
+def test_drop_error_fails_the_test_when_the_body_passes(monkeypatch):
+    original_drop = _drop_database
+
+    def fail_drop(admin_engine, name):
+        original_drop(admin_engine, name)
+        raise RuntimeError("drop failed")
+
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_drop_database",
+        fail_drop,
+    )
+    before = _disposable_database_names()
+    with pytest.raises(RuntimeError, match="drop failed"):
+        with disposable_database(None):
+            pass
+    assert _disposable_database_names() == before
+
+
+def test_body_failure_joins_workers_without_replacing_the_error():
+    release = threading.Event()
+    started = threading.Event()
+    holder = {}
+
+    def run(box):
+        started.set()
+        if not release.wait(15):
+            raise TimeoutError("worker was not released")
+        box["finished"] = True
+
+    before = _disposable_database_names()
+    with pytest.raises(RuntimeError, match="body failed") as caught:
+        with disposable_database(None) as lab:
+            thread, box = _start(run)
+            lab.track(thread, box, release)
+            holder["thread"] = thread
+            holder["box"] = box
+            if not started.wait(15):
+                raise AssertionError("worker did not start")
+            raise RuntimeError("body failed")
+    assert holder["box"].get("finished") is True
+    assert holder["thread"].is_alive() is False
+    notes = " ".join(getattr(caught.value, "__notes__", []))
+    assert "still running" not in notes
+    assert _disposable_database_names() == before
