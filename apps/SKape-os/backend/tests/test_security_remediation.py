@@ -491,11 +491,12 @@ def test_alert_resolution_is_atomic_with_its_audit(
         "app.crud.alert.log_activity",
         _fail_after_audit,
     )
-    with pytest.raises(RuntimeError, match="audit failed"):
-        api.patch(
-            f"/api/v1/alerts/{second_id}/resolve",
-            headers=headers,
-        )
+    failed = api.patch(
+        f"/api/v1/alerts/{second_id}/resolve",
+        headers=headers,
+    )
+    assert failed.status_code == 500
+    assert failed.json()["detail"] == "Internal server error"
     db.expire_all()
     stored = db.get(Alert, second_id)
     assert stored.is_resolved is False

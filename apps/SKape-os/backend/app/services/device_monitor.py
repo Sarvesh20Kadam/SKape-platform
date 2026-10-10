@@ -5,6 +5,10 @@ from sqlalchemy import text
 from app.database import SessionLocal
 from app.crud.device import mark_stale_devices_offline
 from app.crud.alert import create_alert
+from app.log_safety import configure_logging, get_logger, redact_sensitive
+
+
+logger = get_logger("monitor")
 
 
 CHECK_INTERVAL_SECONDS = 10
@@ -88,10 +92,10 @@ def run_monitor_cycle(
                 )
 
                 if created:
-                    print(
-                        f"[DEVICE MONITOR] "
-                        f"{device.device_id} marked OFFLINE; "
-                        f"alert {alert.id} created"
+                    logger.info(
+                        "device marked offline device_id=%s alert_id=%s",
+                        device.device_id,
+                        alert.id,
                     )
 
             db.commit()
@@ -104,7 +108,7 @@ def run_monitor_cycle(
 
 
 async def device_monitor():
-    print("[DEVICE MONITOR] Started")
+    logger.info("device monitor started")
 
     while True:
         db = SessionLocal()
@@ -113,7 +117,11 @@ async def device_monitor():
             run_monitor_cycle(db)
 
         except Exception as error:
-            print(f"[DEVICE MONITOR] Error: {error}")
+            configure_logging()
+            logger.error(
+                "device monitor cycle failed: %s",
+                redact_sensitive(f"{type(error).__name__}: {error}"),
+            )
 
         finally:
             db.close()

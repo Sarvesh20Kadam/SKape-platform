@@ -1,3 +1,6 @@
+# NotFoundException and BadRequestException respond with
+# {success, message}. Other HTTP errors keep FastAPI's {detail}
+# body so existing clients can keep reading detail.
 from fastapi import Request
 from fastapi.responses import JSONResponse
 

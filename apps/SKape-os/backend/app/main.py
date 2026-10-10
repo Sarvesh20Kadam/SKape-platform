@@ -36,7 +36,13 @@ from app.exception_handlers import (
     bad_request_exception_handler,
 )
 
+from app.log_safety import configure_logging, get_logger
+from app.request_context import RequestContextMiddleware
+from app.runtime_config import api_docs_enabled, cors_origins
 from app.services.device_monitor import device_monitor
+
+
+logger = get_logger("app")
 
 
 @asynccontextmanager
@@ -45,7 +51,7 @@ async def lifespan(app: FastAPI):
         device_monitor()
     )
 
-    print("[DEVICE MONITOR] Started")
+    logger.info("device monitor task starting")
 
     try:
         yield
@@ -58,122 +64,125 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-        print("[DEVICE MONITOR] Stopped")
+        logger.info("device monitor stopped")
 
 
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.VERSION,
-    lifespan=lifespan,
-)
+def create_app():
+    configure_logging()
+    docs_enabled = api_docs_enabled()
+    application = FastAPI(
+        title=settings.APP_NAME,
+        version=settings.VERSION,
+        lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+    )
+
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    application.add_middleware(RequestContextMiddleware)
+
+    application.add_exception_handler(
+        NotFoundException,
+        not_found_exception_handler,
+    )
+
+    application.add_exception_handler(
+        BadRequestException,
+        bad_request_exception_handler,
+    )
+
+    application.include_router(
+        root_router,
+    )
+
+    application.include_router(
+        health_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        version_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        projects_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        users.router,
+        prefix="/api/v1/users",
+        tags=["Users"],
+    )
+
+    application.include_router(
+        organizations_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        invitations_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        tasks_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        assets_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        dashboard_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        comments_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        activity_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        devices_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        telemetry_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        device_health_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        device_detail_router,
+        prefix="/api/v1",
+    )
+
+    application.include_router(
+        alerts_router,
+        prefix="/api/v1",
+    )
+    return application
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-app.add_exception_handler(
-    NotFoundException,
-    not_found_exception_handler,
-)
-
-app.add_exception_handler(
-    BadRequestException,
-    bad_request_exception_handler,
-)
-
-
-app.include_router(
-    root_router,
-)
-
-app.include_router(
-    health_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    version_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    projects_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    users.router,
-    prefix="/api/v1/users",
-    tags=["Users"],
-)
-
-app.include_router(
-    organizations_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    invitations_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    tasks_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    assets_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    dashboard_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    comments_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    activity_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    devices_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    telemetry_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    device_health_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    device_detail_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    alerts_router,
-    prefix="/api/v1",
-)
+app = create_app()
