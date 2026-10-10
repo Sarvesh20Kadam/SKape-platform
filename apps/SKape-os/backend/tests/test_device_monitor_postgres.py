@@ -1,8 +1,9 @@
 """PostgreSQL concurrency tests for device monitoring.
 
 These tests use disposable databases created from SKAPE_TEST_DATABASE_URL.
-Alembic reads its script location from alembic.ini, then the test replaces
-sqlalchemy.url. Migrations run only against that new database.
+Alembic reads its script location from alembic.ini. Each migration sets
+DATABASE_URL to that new database for the command, then restores the
+previous value. Migrations run only against that new database.
 
 Run this module serially. A pytest-xdist worker fails the module.
 """
@@ -35,7 +36,10 @@ from app.crud.device import heartbeat_device, mark_stale_devices_offline
 from app.models.alert import Alert
 from app.models.device import Device
 from app.models.organization import Organization
-from app.services.device_monitor import run_monitor_cycle
+from app.services.device_monitor import (
+    MONITOR_ADVISORY_LOCK_KEY,
+    run_monitor_cycle,
+)
 
 
 ALEMBIC_INI = BACKEND_ROOT / "alembic.ini"
@@ -434,11 +438,35 @@ def _check_definition(engine, name):
         ).scalar()
 
 
+@contextmanager
+def _migration_environment(url, name):
+    """Expose one disposable database as DATABASE_URL, then restore it."""
+
+    parsed = make_url(url)
+    if (
+        not DISPOSABLE_NAME.fullmatch(name)
+        or parsed.database != name
+    ):
+        raise RuntimeError(
+            "refusing to select a migration database"
+        )
+    previous = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = url
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous
+
+
 def _migrate(engine, url, name, revision):
     with engine.connect() as connection:
         _assert_identity(connection, name)
     before = _revision(engine, name)
-    command.upgrade(_alembic_config(url, name), revision)
+    with _migration_environment(url, name):
+        command.upgrade(_alembic_config(url, name), revision)
     with engine.connect() as connection:
         _assert_identity(connection, name)
     after = _revision(engine, name)
@@ -465,7 +493,11 @@ def _downgrade(lab, revision):
         raise RuntimeError("downgrade preflight missing unique index")
     if _check_definition(lab.engine, lab.name) is None:
         raise RuntimeError("downgrade preflight missing check")
-    command.downgrade(_alembic_config(lab.url, lab.name), revision)
+    with _migration_environment(lab.url, lab.name):
+        command.downgrade(
+            _alembic_config(lab.url, lab.name),
+            revision,
+        )
     with lab.engine.connect() as connection:
         _assert_identity(connection, lab.name)
     if _revision(lab.engine, lab.name) != revision:
@@ -1385,10 +1417,11 @@ def _refuse_upgrade(lab, message):
     referee = lab.referee()
     before = _rows(referee)
     with pytest.raises(Exception) as caught:
-        command.upgrade(
-            _alembic_config(lab.url, lab.name),
-            "head",
-        )
+        with _migration_environment(lab.url, lab.name):
+            command.upgrade(
+                _alembic_config(lab.url, lab.name),
+                "head",
+            )
     assert message in _runtime_text(caught.value)
     with lab.engine.connect() as connection:
         _assert_identity(connection, lab.name)
@@ -1557,3 +1590,107 @@ def test_body_failure_joins_workers_without_replacing_the_error():
     notes = " ".join(getattr(caught.value, "__notes__", []))
     assert "still running" not in notes
     assert _disposable_database_names() == before
+
+
+def _device_status(connection, device_pk):
+    return connection.execute(
+        text("SELECT status FROM devices WHERE id = :device_id"),
+        {"device_id": device_pk},
+    ).scalar()
+
+
+def _unresolved_offline_alerts(connection, device_pk):
+    return connection.execute(
+        text(
+            "SELECT count(*) FROM alerts "
+            "WHERE device_id = :device_id "
+            "AND alert_type = 'device_offline' "
+            "AND NOT is_resolved"
+        ),
+        {"device_id": device_pk},
+    ).scalar()
+
+
+def test_competing_monitor_cycles_do_not_duplicate_offline_alerts():
+    """A second cycle skips while the advisory lock is held."""
+
+    with disposable_database("head") as lab:
+        holder = lab.session()
+        organization = _seed_organization(holder, "single-flight")
+        device = _seed_stale_device(
+            holder,
+            organization,
+            "pump-single-flight",
+        )
+        device_pk = device.id
+        acquired = holder.execute(
+            text(
+                "SELECT pg_try_advisory_lock("
+                "CAST(:lock_key AS bigint))"
+            ),
+            {"lock_key": MONITOR_ADVISORY_LOCK_KEY},
+        ).scalar()
+        assert acquired is True
+
+        rival = lab.session()
+        referee = lab.referee()
+        release = threading.Event()
+
+        def compete(_box):
+            run_monitor_cycle(rival)
+
+        thread, box = _start(compete)
+        lab.track(thread, box, release)
+        thread.join(15)
+        if thread.is_alive():
+            raise AssertionError(
+                "competing monitor cycle did not finish"
+            )
+        if box.get("error") is not None:
+            raise box["error"]
+
+        assert _device_status(referee, device_pk) == "online"
+        assert _unresolved_offline_alerts(referee, device_pk) == 0
+
+
+def test_monitor_cycle_proceeds_after_the_advisory_lock_is_released():
+    """The next cycle performs the offline work once the lock is free."""
+
+    with disposable_database("head") as lab:
+        holder = lab.session()
+        organization = _seed_organization(holder, "lock-release")
+        device = _seed_stale_device(
+            holder,
+            organization,
+            "pump-lock-release",
+        )
+        device_pk = device.id
+        acquired = holder.execute(
+            text(
+                "SELECT pg_try_advisory_lock("
+                "CAST(:lock_key AS bigint))"
+            ),
+            {"lock_key": MONITOR_ADVISORY_LOCK_KEY},
+        ).scalar()
+        assert acquired is True
+        rival = lab.session()
+        run_monitor_cycle(rival)
+        referee = lab.referee()
+        assert _device_status(referee, device_pk) == "online"
+        assert _unresolved_offline_alerts(referee, device_pk) == 0
+
+        released = holder.execute(
+            text(
+                "SELECT pg_advisory_unlock("
+                "CAST(:lock_key AS bigint))"
+            ),
+            {"lock_key": MONITOR_ADVISORY_LOCK_KEY},
+        ).scalar()
+        assert released is True
+
+        run_monitor_cycle(rival)
+        assert _device_status(referee, device_pk) == "offline"
+        assert _unresolved_offline_alerts(referee, device_pk) == 1
+
+        run_monitor_cycle(lab.session())
+        assert _unresolved_offline_alerts(referee, device_pk) == 1
