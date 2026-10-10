@@ -8,21 +8,33 @@ production recovery procedure.
 
 The drill creates a disposable database, migrates it to the current
 Alembic head, and loads synthetic organizations, users, and a project
-through the application API. It takes a custom-format logical backup
-with `pg_dump`, restores that backup with `pg_restore` into a second
-empty disposable database, and checks that the copy has the same schema
-revision and records. It then logs in as those synthetic users, checks
+through the application API. It streams a custom-format logical backup
+from `pg_dump` into a temporary `backup.dump` file, records a SHA-256
+digest and the file size, and checks that same file again immediately
+before `pg_restore`. A checksum mismatch stops the restore. The restore
+goes into a second empty disposable database. The drill then checks the
+schema revision and records, logs in as those synthetic users, checks
 that one organization cannot read the other's project, creates a project
 only on the restored database, and confirms production readiness reports
 ready.
+
+It also records three durations with a monotonic clock: the `pg_dump`
+invocation, the `pg_restore` invocation, and the span from the start of
+the dump through the final workflow checks. A successful run prints
+those durations and the digest. The test checks that each duration is
+zero or greater and that the total is at least the dump duration plus
+the restore duration. It does not impose a maximum time.
 
 ## What the drill does not prove
 
 A successful logical restore does not establish point-in-time recovery,
 write-ahead-log archiving, off-site retention, an encryption-at-rest
-policy, a tested recovery time objective, a tested recovery point
-objective, or production recovery readiness. No backup schedule,
-retention period, or hosting platform is defined here.
+policy, or production recovery readiness. No backup schedule, retention
+period, or hosting platform is defined here.
+
+The printed durations do not prove a proposed four-hour recovery time
+objective or a proposed 24-hour recovery point objective. They describe
+one synthetic run on the machine that executed the test.
 
 ## Requirements
 
@@ -81,7 +93,15 @@ missing client tools fails the test. It does not skip.
   `SKAPE_PG_CLIENT_TIMEOUT_SECONDS` or the 60-second default. The message
   does not include the command, a connection URL, or a password. The
   local client process is killed and waited for. In Docker mode the same
-  tool name is then signaled inside the container.
+  tool name is then signaled inside the container. A partial
+  `backup.dump` is still removed.
+- `pg_dump produced an empty backup`: the dump command exited zero and
+  wrote no bytes.
+- `pg_dump did not write a custom-format backup`: the file does not begin
+  with the custom-format marker. The message does not include the file
+  body.
+- `backup checksum does not match`: the file size or SHA-256 digest
+  changed after the dump. `pg_restore` is not started.
 - A schema assertion failure means `alembic_version` on the restored
   database is not the repository head.
 - A project, login, or tenant assertion failure means the restored data
@@ -102,17 +122,25 @@ Protected names are not drop targets. The helper refuses those names
 before it opens a connection to drop, and it closes the engines it
 opened.
 
-The custom-format backup stays in the test process's memory until the
-test function returns. It is not written to a backup file or to the
-temporary directory.
+The test creates a temporary directory whose name starts with
+`skape-recovery-`. `pg_dump` streams the custom-format archive to
+`backup.dump` in that directory. Host and Docker execution both write
+this host file. The test does not keep the complete archive as one in-memory byte
+string. Docker does not use an in-container dump path. `pg_restore`
+reads that same host file through stdin after the checksum check.
 
-The temporary directory is used for a password file only when the client
-tools run on the host. Docker mode does not write that file. On Unix the
-host-mode file is set to mode `0600` before the client starts, so only
-its owner can read and write it. Windows does not apply that Unix mode;
-the file is still deleted when the test ends, and the password is not
-placed on the command line. The directory and any file in it are removed
-on success and on failure, including a failed dump, restore, or timeout.
+The temporary directory also holds a password file when the client tools
+run on the host. Docker mode does not write that password file. On Unix
+the host-mode file is set to mode `0600` before the client starts, so
+only its owner can read and write it. Windows does not apply that Unix
+mode; the file is still deleted when the test ends, and the password is
+not placed on the command line.
+
+Cleanup removes files only inside a directory whose name starts with
+`skape-recovery-`, then removes that directory. It runs on success and
+on failure, including a checksum mismatch, a failed dump, a failed
+restore, a timeout, and an assertion failure. A partial `backup.dump`
+is included. Protected and unrelated databases are not drop targets.
 
 ## Production
 

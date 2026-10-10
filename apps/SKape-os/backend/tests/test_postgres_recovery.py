@@ -6,12 +6,14 @@ skip in that mode.
 """
 
 import asyncio
+import hashlib
 import importlib.util
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -29,6 +31,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "Correct-horse-1"
 DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 _CLIENT_TIMEOUT_LIMIT_SECONDS = 600
+_BACKUP_NAME = "backup.dump"
+_RECOVERY_DIRECTORY_PREFIX = "skape-recovery-"
+_CUSTOM_FORMAT_MAGIC = b"PGDMP"
+_HASH_CHUNK_BYTES = 1024 * 1024
 _SECRET_URL = re.compile(
     r"postgresql(?:\+\w+)?://\S+",
     re.IGNORECASE,
@@ -174,34 +180,123 @@ def _stop_docker_tool(command):
     )
 
 
-def _run_client(command, *, password="", stdin=None, env=None, mode="host"):
+def _run_client(
+    command,
+    *,
+    password="",
+    stdin=None,
+    env=None,
+    mode="host",
+    stdout_path=None,
+):
     timeout = _client_timeout()
+    stdout_handle = None
     try:
-        completed = subprocess.run(
-            command,
-            input=stdin,
-            capture_output=True,
-            env=env,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        if mode == "docker":
-            try:
-                _stop_docker_tool(command)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-        raise pytest.fail.Exception(
-            f"PostgreSQL client timed out after {timeout} seconds"
-        ) from None
+        if stdout_path is not None:
+            stdout_handle = open(stdout_path, "wb")
+            run_stdout = stdout_handle
+        else:
+            run_stdout = subprocess.PIPE
+        run_arguments = {
+            "stdout": run_stdout,
+            "stderr": subprocess.PIPE,
+            "env": env,
+            "check": False,
+            "timeout": timeout,
+        }
+        if isinstance(stdin, (bytes, bytearray)):
+            run_arguments["input"] = stdin
+        elif stdin is not None:
+            run_arguments["stdin"] = stdin
+        try:
+            completed = subprocess.run(command, **run_arguments)
+        except subprocess.TimeoutExpired:
+            if mode == "docker":
+                try:
+                    _stop_docker_tool(command)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            raise pytest.fail.Exception(
+                f"PostgreSQL client timed out after {timeout} seconds"
+            ) from None
+    finally:
+        if stdout_handle is not None:
+            stdout_handle.close()
     if completed.returncode != 0:
-        detail = _redact(completed.stderr or completed.stdout, password)
+        detail_source = completed.stderr or completed.stdout or b""
+        if not isinstance(detail_source, (bytes, bytearray)):
+            detail_source = b""
+        detail = _redact(detail_source, password)
         pytest.fail(
             f"{_client_label(command)} failed with status "
             f"{completed.returncode}"
             + (f": {detail}" if detail else "")
         )
     return completed
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(_HASH_CHUNK_BYTES), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _assert_custom_format(path):
+    size = path.stat().st_size
+    if size <= 0:
+        pytest.fail("pg_dump produced an empty backup")
+    with path.open("rb") as handle:
+        magic = handle.read(len(_CUSTOM_FORMAT_MAGIC))
+    if magic != _CUSTOM_FORMAT_MAGIC:
+        pytest.fail("pg_dump did not write a custom-format backup")
+    return size
+
+
+class BackupArtifact:
+    def __init__(self, path, size, digest, backup_seconds):
+        self.path = path
+        self.size = size
+        self.digest = digest
+        self.backup_seconds = backup_seconds
+
+
+def _verify_backup(artifact):
+    if not artifact.path.is_file():
+        pytest.fail("backup checksum does not match")
+    size = artifact.path.stat().st_size
+    digest = _sha256(artifact.path)
+    if size != artifact.size or digest != artifact.digest:
+        pytest.fail("backup checksum does not match")
+    return digest
+
+
+def _require_recovery_directory(directory):
+    path = Path(directory)
+    if (
+        not path.is_dir()
+        or path.is_symlink()
+        or not path.name.startswith(_RECOVERY_DIRECTORY_PREFIX)
+    ):
+        pytest.fail(
+            "refusing to write a backup outside a recovery directory"
+        )
+    return path
+
+
+def _cleanup_recovery_directory(directory):
+    if directory is None:
+        return
+    directory = Path(directory)
+    if not directory.name.startswith(_RECOVERY_DIRECTORY_PREFIX):
+        return
+    if not directory.is_dir():
+        return
+    for child in directory.iterdir():
+        if child.is_symlink() or child.is_file():
+            child.unlink()
+    directory.rmdir()
 
 
 def _restrict_password_file(path):
@@ -300,7 +395,17 @@ def _assert_client_can_dump(module, dump_command, mode, engine, name, env):
         )
 
 
-def _dump_database(module, dump_command, mode, parsed, engine, name, env):
+def _dump_database(
+    module,
+    dump_command,
+    mode,
+    parsed,
+    engine,
+    name,
+    env,
+    directory,
+):
+    _require_recovery_directory(directory)
     _validated_disposable_name(module, name)
     _assert_client_can_dump(
         module,
@@ -310,18 +415,35 @@ def _dump_database(module, dump_command, mode, parsed, engine, name, env):
         name,
         env,
     )
+    path = directory / _BACKUP_NAME
     password = parsed.password or ""
-    completed = _run_client(
+    started = time.perf_counter()
+    _run_client(
         dump_command
         + ["-Fc", "--no-owner", "--no-acl"]
         + _connection_args(parsed, mode, name),
         password=password,
         env=env,
         mode=mode,
+        stdout_path=path,
     )
-    if not completed.stdout:
-        pytest.fail("pg_dump produced an empty backup")
-    return completed.stdout
+    backup_seconds = time.perf_counter() - started
+    size = _assert_custom_format(path)
+    return BackupArtifact(path, size, _sha256(path), backup_seconds)
+
+
+def _restore_stream(command, artifact, *, env, mode, password=""):
+    _verify_backup(artifact)
+    started = time.perf_counter()
+    with artifact.path.open("rb") as handle:
+        _run_client(
+            command,
+            password=password,
+            stdin=handle,
+            env=env,
+            mode=mode,
+        )
+    return time.perf_counter() - started
 
 
 def _restore_database(
@@ -331,23 +453,24 @@ def _restore_database(
     parsed,
     engine,
     name,
-    payload,
+    artifact,
     env,
 ):
     _validated_disposable_name(module, name)
+    _verify_backup(artifact)
     with engine.begin() as connection:
         module._assert_identity(connection, name)
         connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))
     password = parsed.password or ""
-    _run_client(
+    return _restore_stream(
         restore_command
         + ["--no-owner", "--exit-on-error", "--single-transaction"]
         + _connection_args(parsed, mode, name),
-        password=password,
-        stdin=payload,
+        artifact,
         env=env,
         mode=mode,
+        password=password,
     )
 
 
@@ -586,6 +709,118 @@ def test_docker_client_timeout_signals_the_container_tool(monkeypatch):
     assert "synthetic-password" not in str(caught.value)
 
 
+def test_empty_backup_is_rejected(tmp_path):
+    path = tmp_path / _BACKUP_NAME
+    path.write_bytes(b"")
+    with pytest.raises(pytest.fail.Exception, match="empty backup"):
+        _assert_custom_format(path)
+
+
+def test_non_custom_backup_is_rejected(tmp_path):
+    path = tmp_path / _BACKUP_NAME
+    path.write_bytes(b"not-a-dump")
+    with pytest.raises(
+        pytest.fail.Exception,
+        match="custom-format",
+    ) as caught:
+        _assert_custom_format(path)
+    assert "not-a-dump" not in str(caught.value)
+
+
+def test_checksum_mismatch_does_not_restore(monkeypatch, tmp_path):
+    path = tmp_path / _BACKUP_NAME
+    path.write_bytes(b"PGDMPsynthetic-archive")
+    artifact = BackupArtifact(
+        path,
+        path.stat().st_size,
+        _sha256(path),
+        0.0,
+    )
+    path.write_bytes(b"PGDMPsynthetic-archivX")
+    invoked = []
+
+    def explode(command, **kwargs):
+        invoked.append(command)
+        raise AssertionError("pg_restore was invoked")
+
+    monkeypatch.setattr(subprocess, "run", explode)
+    with pytest.raises(
+        pytest.fail.Exception,
+        match="backup checksum does not match",
+    ):
+        _restore_stream(
+            ["pg_restore", "-d", "skape_test_0123456789abcdef"],
+            artifact,
+            env={},
+            mode="host",
+        )
+    assert invoked == []
+
+
+def test_checksum_accepts_the_same_file(tmp_path):
+    path = tmp_path / _BACKUP_NAME
+    path.write_bytes(b"PGDMPsame-archive")
+    artifact = BackupArtifact(
+        path,
+        path.stat().st_size,
+        _sha256(path),
+        0.01,
+    )
+    assert _verify_backup(artifact) == artifact.digest
+
+
+def test_cleanup_removes_backup_and_password_file(tmp_path):
+    directory = tmp_path / "skape-recovery-unit"
+    directory.mkdir()
+    (directory / _BACKUP_NAME).write_bytes(b"PGDMPpartial")
+    (directory / "pgpass").write_text("unused\n", encoding="utf-8")
+    _cleanup_recovery_directory(directory)
+    assert not directory.exists()
+
+
+def test_dump_rejects_an_invalid_directory_before_writing(
+    tmp_path,
+    monkeypatch,
+):
+    directory = tmp_path / "other-dir"
+    directory.mkdir()
+    marker = directory / "keep.txt"
+    marker.write_text("keep", encoding="utf-8")
+    invoked = []
+
+    def explode(command, **kwargs):
+        invoked.append(command)
+        raise AssertionError("client was invoked")
+
+    monkeypatch.setattr(subprocess, "run", explode)
+    with pytest.raises(
+        pytest.fail.Exception,
+        match="outside a recovery directory",
+    ):
+        _dump_database(
+            None,
+            ["pg_dump"],
+            "host",
+            None,
+            None,
+            "skape",
+            {},
+            directory,
+        )
+    assert invoked == []
+    assert marker.read_text(encoding="utf-8") == "keep"
+    assert not (directory / _BACKUP_NAME).exists()
+
+
+def test_cleanup_leaves_an_unrelated_directory(tmp_path):
+    directory = tmp_path / "other-dir"
+    directory.mkdir()
+    marker = directory / "keep.txt"
+    marker.write_text("keep", encoding="utf-8")
+    _cleanup_recovery_directory(directory)
+    assert marker.read_text(encoding="utf-8") == "keep"
+
+
 def test_logical_backup_restores_schema_and_workflow(
     quiet_monitor,
     monkeypatch,
@@ -594,7 +829,6 @@ def test_logical_backup_restores_schema_and_workflow(
     module = _load_disposable()
     parsed = module._assert_safe_admin_url(_URL)
     directory = Path(tempfile.mkdtemp(prefix="skape-recovery-"))
-    payload = b""
     try:
         env = _child_env(parsed, mode, parsed.password or "", directory)
         with module.disposable_database("head") as source:
@@ -622,7 +856,8 @@ def test_logical_backup_restores_schema_and_workflow(
                 )
                 assert created.status_code == 200, created.text
                 project_id = created.json()["id"]
-            payload = _dump_database(
+            total_started = time.perf_counter()
+            artifact = _dump_database(
                 module,
                 dump_command,
                 mode,
@@ -630,18 +865,22 @@ def test_logical_backup_restores_schema_and_workflow(
                 source.engine,
                 source.name,
                 env,
+                directory,
             )
+            assert artifact.path == directory / _BACKUP_NAME
+            assert artifact.size > 0
+            assert _sha256(artifact.path) == artifact.digest
             with module.disposable_database(None) as destination:
                 _validated_disposable_name(module, destination.name)
                 assert destination.name != source.name
-                _restore_database(
+                restore_seconds = _restore_database(
                     module,
                     restore_command,
                     mode,
                     parsed,
                     destination.engine,
                     destination.name,
-                    payload,
+                    artifact,
                     env,
                 )
                 with destination.engine.connect() as connection:
@@ -728,10 +967,24 @@ def test_logical_backup_restores_schema_and_workflow(
                         connection,
                         "SELECT name FROM projects ORDER BY name",
                     ) == ["Recovery Pump"]
+            total_seconds = time.perf_counter() - total_started
+            assert artifact.backup_seconds >= 0
+            assert restore_seconds >= 0
+            assert total_seconds >= 0
+            assert (
+                total_seconds + 1e-6
+                >= artifact.backup_seconds + restore_seconds
+            )
+            print(
+                "recovery-drill "
+                f"backup_seconds={artifact.backup_seconds:.6f} "
+                f"restore_seconds={restore_seconds:.6f} "
+                f"total_seconds={total_seconds:.6f} "
+                f"sha256={artifact.digest}",
+                flush=True,
+            )
     finally:
-        for child in directory.glob("*"):
-            child.unlink(missing_ok=True)
-        directory.rmdir()
+        _cleanup_recovery_directory(directory)
 
 
 def test_failed_restore_does_not_drop_protected_databases(monkeypatch):
@@ -795,7 +1048,7 @@ def test_failed_restore_does_not_drop_protected_databases(monkeypatch):
     try:
         env = _child_env(parsed, mode, parsed.password or "", directory)
         with module.disposable_database("head") as source:
-            payload = _dump_database(
+            artifact = _dump_database(
                 module,
                 dump_command,
                 mode,
@@ -803,7 +1056,9 @@ def test_failed_restore_does_not_drop_protected_databases(monkeypatch):
                 source.engine,
                 source.name,
                 env,
+                directory,
             )
+            assert artifact.path.is_file()
             with module.disposable_database(None) as destination:
                 with pytest.raises(pytest.fail.Exception):
                     _restore_database(
@@ -813,13 +1068,13 @@ def test_failed_restore_does_not_drop_protected_databases(monkeypatch):
                         parsed,
                         destination.engine,
                         destination.name,
-                        payload,
+                        artifact,
                         env,
                     )
         after, disposable = protected_snapshot()
         assert after == before == {"postgres", "template0", "template1"}
         assert disposable == []
+        assert artifact.path.is_file()
     finally:
-        for child in directory.glob("*"):
-            child.unlink(missing_ok=True)
-        directory.rmdir()
+        _cleanup_recovery_directory(directory)
+    assert not directory.exists()
