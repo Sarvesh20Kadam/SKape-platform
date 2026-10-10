@@ -38,7 +38,7 @@ def get_dashboard(
         db.query(Task)
         .filter(
             Task.organization_id == organization_id,
-            Task.status == "done"
+            Task.status == "completed"
         )
         .count()
     )
@@ -47,7 +47,7 @@ def get_dashboard(
         db.query(Task)
         .filter(
             Task.organization_id == organization_id,
-            Task.status != "done"
+            Task.status != "completed"
         )
         .count()
     )
