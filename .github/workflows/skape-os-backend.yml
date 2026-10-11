@@ -95,4 +95,5 @@ jobs:
             tests/test_tenant_security.py \
             tests/test_readiness_schema.py \
             tests/test_device_monitor_postgres.py \
+            tests/test_migration_chain_postgres.py \
             -k "not test_organization_active_migration_backfills_nulls and not test_email_uniqueness_migration_rejects_case_variants"
