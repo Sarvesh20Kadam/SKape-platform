@@ -377,6 +377,9 @@ def test_password_file_is_removed_when_unix_mode_does_not_stick(
 def test_child_environment_drops_secrets_and_database_urls(tmp_path):
     password_file = tmp_path / "pgpass"
     password_file.write_text("unused\n", encoding="utf-8")
+    os.chmod(password_file, 0o600)
+    if os.name == "posix":
+        assert stat.S_IMODE(os.stat(password_file).st_mode) == 0o600
     environment = postgres_child_environment(
         {
             "PATH": r"C:\PostgreSQL\16\bin",

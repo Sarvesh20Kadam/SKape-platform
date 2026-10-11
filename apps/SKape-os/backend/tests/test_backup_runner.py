@@ -8,6 +8,7 @@ cleanup behavior.
 import io
 import io
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -350,6 +351,9 @@ def test_relative_pgpassfile_is_rejected_before_spawn(tmp_path):
 def test_absolute_regular_pgpassfile_is_passed_to_the_child(tmp_path):
     target = tmp_path / "pgpass"
     target.write_text("unused\n", encoding="utf-8")
+    os.chmod(target, 0o600)
+    if os.name == "posix":
+        assert stat.S_IMODE(os.stat(target).st_mode) == 0o600
     seen = {}
 
     def spawn(argv, env, stdout):
