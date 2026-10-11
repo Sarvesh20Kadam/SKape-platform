@@ -81,6 +81,44 @@ def _unlock_descriptor(fd):
         fcntl.flock(fd, fcntl.LOCK_UN)
 
 
+def _same_open_file(fd, path):
+    """True when an open descriptor still names the directory entry."""
+
+    opened = os.fstat(fd)
+    listed = os.lstat(path)
+    if not opened.st_ino or not listed.st_ino:
+        return False
+    return opened.st_dev == listed.st_dev and opened.st_ino == listed.st_ino
+
+
+def _open_lock_file(lock_path):
+    """Open the lock file and reject a symlink, including a raced one.
+
+    POSIX open uses ``O_NOFOLLOW`` when the interpreter provides it.
+    After the open, the descriptor is compared with ``lstat`` so a
+    symlink swapped in before the open is closed without a write.
+    """
+
+    if lock_path.is_symlink():
+        raise BackupError("refusing to publish outside a backup directory")
+    flags = os.O_CREAT | os.O_RDWR
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(str(lock_path), flags, 0o600)
+    except OSError:
+        raise BackupError(
+            "refusing to publish outside a backup directory"
+        ) from None
+    try:
+        if lock_path.is_symlink() or not _same_open_file(fd, lock_path):
+            raise BackupError("refusing to publish outside a backup directory")
+    except BackupError:
+        os.close(fd)
+        raise
+    return fd
+
+
 def acquire_publication_lock(directory):
     """Lock one local backup directory.
 
@@ -91,9 +129,7 @@ def acquire_publication_lock(directory):
 
     selected = require_backup_directory(directory)
     lock_path = selected / _LOCK_NAME
-    if lock_path.is_symlink():
-        raise BackupError("refusing to publish outside a backup directory")
-    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    fd = _open_lock_file(lock_path)
     deadline = time.monotonic() + LOCK_WAIT_SECONDS
     while True:
         try:

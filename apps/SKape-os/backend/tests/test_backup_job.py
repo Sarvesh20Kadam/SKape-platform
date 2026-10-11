@@ -6,6 +6,7 @@ retained copy.
 
 import hashlib
 import os
+import stat
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -19,12 +20,18 @@ from app.schema_revision import expected_schema_revisions
 from backup.commands import (
     dump_argv,
     postgres_child_environment,
+    require_pgpassfile,
     restore_argv,
     restrict_password_file,
 )
 from backup.dump import require_dump_checksum, validate_dump_file
 from backup.errors import BackupError
-from backup.manifest import parse_manifest, serialize_manifest, validate_manifest
+from backup.manifest import (
+    BackupManifest,
+    parse_manifest,
+    serialize_manifest,
+    validate_manifest,
+)
 from backup.publish import (
     acquire_publication_lock,
     publish_verified_latest,
@@ -116,6 +123,61 @@ def test_backup_package_does_not_reference_the_api_database():
     combined = "\n".join(sources)
     assert "app.database" not in combined
     assert "app.main" not in combined
+
+
+def test_direct_manifest_construction_is_rejected():
+    with pytest.raises(BackupError, match="backup manifest is invalid"):
+        BackupManifest(
+            "backup-20261011T120000Z",
+            NOW,
+            16,
+            11,
+            DIGEST,
+            tuple(sorted(HEADS)),
+            "verified",
+        )
+
+
+def test_validated_manifest_mutation_is_rejected():
+    manifest = _manifest(verification_status="pending")
+    fields = {
+        "backup_id": "other-backup",
+        "completed_at": NOW,
+        "postgres_major": 15,
+        "size_bytes": 12,
+        "sha256": "b" * 64,
+        "schema_revisions": ("not-a-head",),
+        "verification_status": "verified",
+    }
+    for name, value in fields.items():
+        with pytest.raises(BackupError, match="backup manifest is invalid"):
+            setattr(manifest, name, value)
+        with pytest.raises(BackupError, match="backup manifest is invalid"):
+            delattr(manifest, name)
+    with pytest.raises(BackupError, match="backup manifest is invalid"):
+        object.__setattr__(manifest, "verification_status", "verified")
+    assert manifest.verification_status == "pending"
+    assert manifest.schema_revisions == tuple(sorted(HEADS))
+    assert manifest.verified is False
+    restored = parse_manifest(
+        serialize_manifest(manifest),
+        expected_revisions=HEADS,
+        now=NOW,
+    )
+    assert restored.verification_status == "pending"
+    assert restored.schema_revisions == tuple(sorted(HEADS))
+    start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    entries = list(_series("daily", MINIMUM_VERIFIED_COPIES["daily"], start=start))
+    pending = _classified(
+        "daily-pending",
+        "daily",
+        start + timedelta(days=2),
+        verified=False,
+    )
+    with pytest.raises(BackupError, match="backup manifest is invalid"):
+        object.__setattr__(pending.manifest, "verification_status", "verified")
+    assert pending.manifest.verified is False
+    assert copies_authorized_for_deletion([*entries, pending]) == []
 
 
 def test_manifest_round_trip_uses_repository_heads():
@@ -312,7 +374,9 @@ def test_password_file_is_removed_when_unix_mode_does_not_stick(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_child_environment_drops_secrets_and_database_urls():
+def test_child_environment_drops_secrets_and_database_urls(tmp_path):
+    password_file = tmp_path / "pgpass"
+    password_file.write_text("unused\n", encoding="utf-8")
     environment = postgres_child_environment(
         {
             "PATH": r"C:\PostgreSQL\16\bin",
@@ -325,11 +389,11 @@ def test_child_environment_drops_secrets_and_database_urls():
             "AUTHORIZATION": "Bearer auth-value",
             "HTTP_AUTHORIZATION": "Bearer auth-value",
         },
-        pgpassfile=r"C:\backup\pgpass",
+        pgpassfile=str(password_file),
     )
     rendered = " ".join(environment.values())
     assert environment["PATH"] == r"C:\PostgreSQL\16\bin"
-    assert environment["PGPASSFILE"] == r"C:\backup\pgpass"
+    assert environment["PGPASSFILE"] == os.path.normpath(str(password_file))
     assert "PGPASSWORD" not in environment
     assert "DATABASE_URL" not in environment
     assert "PGHOST" not in environment
@@ -341,6 +405,89 @@ def test_child_environment_drops_secrets_and_database_urls():
     assert "postgresql://" not in rendered
     assert "storage-secret" not in rendered
     assert "auth-value" not in rendered
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    ["pgpass", "../pgpass", r"..\pgpass", "C:pgpass"],
+)
+def test_pgpassfile_rejects_relative_paths(candidate):
+    with pytest.raises(BackupError, match="password file is not safe"):
+        require_pgpassfile(candidate)
+
+
+def test_pgpassfile_rejects_parent_traversal(tmp_path):
+    present = tmp_path / "pgpass"
+    present.write_text("unused\n", encoding="utf-8")
+    candidates = (
+        str(tmp_path / ".." / "pgpass"),
+        str(tmp_path / "nested" / ".." / "pgpass"),
+        os.path.normpath(str(present)) + os.sep + "..",
+    )
+    for candidate in candidates:
+        with pytest.raises(BackupError, match="password file is not safe"):
+            postgres_child_environment(
+                {"PATH": r"C:\PostgreSQL\16\bin"},
+                pgpassfile=candidate,
+            )
+
+
+def test_pgpassfile_rejects_a_missing_file_and_a_directory(tmp_path):
+    with pytest.raises(BackupError, match="password file is not safe"):
+        require_pgpassfile(str(tmp_path / "missing"))
+    with pytest.raises(BackupError, match="password file is not safe"):
+        require_pgpassfile(str(tmp_path))
+
+
+def test_pgpassfile_rejects_a_symlink(tmp_path, monkeypatch):
+    target = tmp_path / "pgpass"
+    target.write_text("unused\n", encoding="utf-8")
+    monkeypatch.setattr(Path, "is_symlink", lambda self: Path(self) == target)
+    with pytest.raises(BackupError, match="password file is not safe"):
+        require_pgpassfile(str(target))
+
+
+def test_pgpassfile_rejects_an_lstat_symlink(tmp_path, monkeypatch):
+    target = tmp_path / "pgpass"
+    target.write_text("unused\n", encoding="utf-8")
+    monkeypatch.setattr(Path, "is_symlink", lambda self: False)
+
+    class Info:
+        st_mode = stat.S_IFLNK | 0o777
+
+    monkeypatch.setattr(os, "lstat", lambda path: Info())
+    with pytest.raises(BackupError, match="password file is not safe"):
+        require_pgpassfile(str(target))
+
+
+def test_pgpassfile_rejects_insecure_posix_permissions(tmp_path, monkeypatch):
+    target = tmp_path / "pgpass"
+    target.write_text("unused\n", encoding="utf-8")
+    monkeypatch.setattr("backup.commands._platform_name", lambda: "posix")
+    monkeypatch.setattr(Path, "is_symlink", lambda self: False)
+
+    class Info:
+        st_mode = stat.S_IFREG | 0o644
+
+    monkeypatch.setattr(os, "lstat", lambda path: Info())
+    with pytest.raises(BackupError, match="password file is not safe"):
+        require_pgpassfile(str(target))
+
+
+def test_pgpassfile_accepts_posix_owner_only_mode_when_status_says_so(
+    tmp_path,
+    monkeypatch,
+):
+    target = tmp_path / "pgpass"
+    target.write_text("unused\n", encoding="utf-8")
+    monkeypatch.setattr("backup.commands._platform_name", lambda: "posix")
+    monkeypatch.setattr(Path, "is_symlink", lambda self: False)
+
+    class Info:
+        st_mode = stat.S_IFREG | 0o600
+
+    monkeypatch.setattr(os, "lstat", lambda path: Info())
+    assert require_pgpassfile(str(target)) == os.path.normpath(str(target))
 
 
 def test_retention_deletes_only_the_oldest_copy_above_each_minimum():
@@ -688,6 +835,28 @@ def test_overlapping_publication_keeps_the_newer_manifest(tmp_path, monkeypatch)
     assert published.backup_id == "backup-new"
     assert errors == [] or errors == ["refusing to publish an older backup"]
     assert not _temporary_manifests(directory)
+
+
+def test_lock_open_rejects_a_different_file_identity(tmp_path, monkeypatch):
+    directory, latest = _backup_directory(tmp_path, placeholder=False)
+    dump = _dump(directory)
+    _publish(
+        directory,
+        dump,
+        completed_at="2026-10-11T11:00:00Z",
+        backup_id="backup-old",
+    )
+    original = latest.read_text(encoding="utf-8")
+    real_fstat = os.fstat
+
+    def mismatch(fd):
+        stat = real_fstat(fd)
+        return type("Stat", (), {"st_dev": stat.st_dev, "st_ino": stat.st_ino + 1})()
+
+    monkeypatch.setattr(os, "fstat", mismatch)
+    with pytest.raises(BackupError, match="refusing to publish"):
+        _publish(directory, dump, backup_id="backup-new")
+    assert latest.read_text(encoding="utf-8") == original
 
 
 def test_publication_refuses_an_unprefixed_directory(tmp_path):

@@ -6,6 +6,7 @@ it does not upload the dump.
 
 import json
 import re
+import weakref
 from datetime import datetime, timezone
 
 from app.schema_revision import schema_revisions_match
@@ -33,8 +34,41 @@ _FIELDS = (
 )
 
 
+_FROM_VALIDATION = object()
+_SEALED = weakref.WeakKeyDictionary()
+
+
+def _sealed_values(manifest):
+    try:
+        return _SEALED[manifest]
+    except KeyError:
+        _invalid()
+
+
+def _field(index):
+    """Read one sealed field and reject later assignment."""
+
+    def getter(manifest):
+        return _sealed_values(manifest)[index]
+
+    def setter(manifest, value):
+        _invalid()
+
+    def deleter(manifest):
+        _invalid()
+
+    return property(getter, setter, deleter)
+
+
 class BackupManifest:
-    """A manifest that passed validation."""
+    """A manifest that passed :func:`validate_manifest`.
+
+    Direct construction is rejected. After validation the fields are
+    fixed: assignment, deletion, and instance-attribute replacement do
+    not change the values retention and publication read.
+    """
+
+    __slots__ = ("__weakref__",)
 
     def __init__(
         self,
@@ -45,18 +79,78 @@ class BackupManifest:
         sha256,
         schema_revisions,
         verification_status,
+        validation_token=None,
     ):
-        self.backup_id = backup_id
-        self.completed_at = completed_at
-        self.postgres_major = postgres_major
-        self.size_bytes = size_bytes
-        self.sha256 = sha256
-        self.schema_revisions = schema_revisions
-        self.verification_status = verification_status
+        if validation_token is not _FROM_VALIDATION:
+            _invalid()
+        if not isinstance(backup_id, str) or not _BACKUP_ID.fullmatch(backup_id):
+            _invalid()
+        if (
+            not isinstance(completed_at, datetime)
+            or completed_at.tzinfo is None
+            or completed_at.utcoffset() is None
+            or completed_at.utcoffset() != timezone.utc.utcoffset(completed_at)
+        ):
+            _invalid()
+        if (
+            isinstance(postgres_major, bool)
+            or postgres_major != REQUIRED_POSTGRES_MAJOR
+        ):
+            _invalid()
+        if (
+            isinstance(size_bytes, bool)
+            or not isinstance(size_bytes, int)
+            or size_bytes < 1
+        ):
+            _invalid()
+        if not isinstance(sha256, str) or not _SHA256.fullmatch(sha256):
+            _invalid()
+        if (
+            not isinstance(schema_revisions, tuple)
+            or not schema_revisions
+            or not all(
+                isinstance(item, str) and item.strip()
+                for item in schema_revisions
+            )
+        ):
+            _invalid()
+        if verification_status not in _STATUSES:
+            _invalid()
+        _SEALED[self] = (
+            backup_id,
+            completed_at,
+            postgres_major,
+            size_bytes,
+            sha256,
+            schema_revisions,
+            verification_status,
+        )
+
+    def __setattr__(self, name, value):
+        _invalid()
+
+    def __delattr__(self, name):
+        _invalid()
+
+    backup_id = _field(0)
+    completed_at = _field(1)
+    postgres_major = _field(2)
+    size_bytes = _field(3)
+    sha256 = _field(4)
+    schema_revisions = _field(5)
+    verification_status = _field(6)
 
     @property
     def verified(self):
         return self.verification_status == VERIFIED
+
+    @verified.setter
+    def verified(self, value):
+        _invalid()
+
+    @verified.deleter
+    def verified(self):
+        _invalid()
 
 
 def _invalid():
@@ -138,6 +232,7 @@ def validate_manifest(payload, *, expected_revisions, now):
         digest,
         tuple(sorted(set(revisions))),
         status,
+        _FROM_VALIDATION,
     )
 
 
