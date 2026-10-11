@@ -6,7 +6,9 @@ create a bucket, or open a database. Cleanup belongs to a separate
 operator. The smoke token must not have permission to delete objects.
 
 Nothing is contacted unless ``SKAPE_R2_SMOKE`` is ``1`` and the bucket
-name identifies a non-production bucket. Credentials are not printed.
+name passes a syntactic guard. That guard does not establish that the
+bucket is dedicated, empty, or non-production. Credentials are not
+printed.
 """
 
 import os

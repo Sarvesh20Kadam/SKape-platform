@@ -69,16 +69,27 @@ is not established by an installed copy of the libraries.
 check for `R2Client`. It is not a recovery, retention, or PITR drill.
 This repository has not run it against Cloudflare.
 
-The harness reads only these variables. It does not read
+The harness reads only these variables. It does not itself read
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, or a
-credential file. A missing opt-in flag or a bucket that is not clearly
-non-production stops the process before a client is constructed.
+credential file. Client construction passes the explicit smoke
+credentials. A set `AWS_PROFILE` whose profile is missing can still
+stop construction before any object operation. The smoke shell must
+have the `AWS_*` names listed in `r2-smoke-preflight.md` unset. That
+unset state is an external check and is not verified here.
+
+A missing opt-in flag or a bucket name that fails the rule below
+stops the process before a client is constructed. The `smoke-` rule
+is a syntactic guard. Passing it does not prove the bucket is
+dedicated, empty, or non-production. Complete `r2-smoke-preflight.md`
+before any live run. That record keeps evidence complete at `no` and
+live-test authorization at `not given` until a separate approval is
+written there.
 
 - `SKAPE_R2_SMOKE=1`
 - `SKAPE_R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`
 - `SKAPE_R2_REGION=auto`
-- `SKAPE_R2_BUCKET` set to a dedicated bucket whose name starts with
-  `smoke-`. A name segment of `prod` or `production` is rejected.
+- `SKAPE_R2_BUCKET` must start with `smoke-` and must not contain a
+  hyphen segment equal to `prod` or `production`.
 - `SKAPE_R2_ACCESS_KEY_ID`
 - `SKAPE_R2_SECRET_ACCESS_KEY`
 
@@ -91,12 +102,14 @@ create a bucket, or delete an object. Failures use fixed messages and
 do not include the secret.
 
 Cleanup is a separate operator action with a different principal.
-The harness does not delete. On success it prints both keys to
-stdout. If an object operation fails after the run has started, stderr
-prints the fixed error and then those same two keys. A configuration
-or client-construction failure, before any object operation, prints
-only the fixed error and does not list keys. Delete only the printed
-keys. Do not point this harness at a production bucket or database.
+The harness does not delete, and it does not open a database. On
+success it prints both keys to stdout. If an object operation fails
+after the run has started, stderr prints the fixed error and then
+those same two keys. A configuration or client-construction failure,
+before any object operation, prints only the fixed error and does not
+list keys. Delete only the printed keys. The name check above does
+not enforce this limit. Do not point this harness at a production
+bucket.
 
 ## Requirements
 
