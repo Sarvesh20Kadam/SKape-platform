@@ -52,9 +52,10 @@ addressing, signature version `s3v4`, checksum calculation and
 validation of `when_required`, a 10-second connect timeout, a 60-second
 read timeout, and at most three standard-mode attempts. That retry mode
 repeats the same request, so conditional headers stay on each attempt.
-The wrapper does not construct a client or read ambient credentials. A
-download whose `ContentLength` is missing, invalid, or larger than 5
-GiB is rejected before it is read. Five GiB is the single `PutObject`
+`create_r2_client` constructs that client from an explicit endpoint,
+region, access key, and secret. It does not read ambient credentials,
+create a bucket, or send a request. A download whose `ContentLength`
+is missing, invalid, or larger than 5 GiB is rejected before it is read. Five GiB is the single `PutObject`
 maximum. A response body that defines `close` is closed after success
 and after rejection. Those tests use a fake client. They do not contact
 Cloudflare R2 or create a bucket. `requirements-backup.txt` pins the

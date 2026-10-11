@@ -1,9 +1,12 @@
 """Adapt an injected S3 client to the backup object-store protocol.
 
 The wrapper implements ``head``, ``get``, and conditional ``put`` for
-``backup.r2``. The caller supplies the client. This module does not
-construct one, read credentials from the environment, open a connection,
-or delete an object.
+``backup.r2``. The caller supplies the client. ``create_r2_client`` is
+the only constructor. It requires an explicit endpoint, region, access
+key, and secret, then builds one S3 client with those credentials and
+the verified configuration. It does not read the process environment,
+discover ambient credentials, create a bucket, send a request, or
+delete an object.
 
 ``head`` returns :class:`backup.r2.ObjectInfo` or ``None`` when the
 service reports that the key is absent. A forbidden response is not
@@ -19,14 +22,14 @@ R2 endpoint, explicit credentials, and client settings. It does not
 create a client, read the process environment, or use instance
 metadata.
 
-``config_options`` is the mapping a future S3 client configuration
-accepts: signature version ``s3v4``, path-style addressing, checksum
-calculation and validation of ``when_required``, a finite connect
-timeout, a finite read timeout, and a bounded standard-mode retry
-budget. That retry mode repeats the same request, so ``IfMatch`` and
-``IfNoneMatch`` remain on every attempt. This wrapper calls the
-injected client once and does not build another put without its
-precondition.
+``config_options`` is the mapping ``create_r2_client`` passes to its
+configuration object: signature version ``s3v4``, path-style
+addressing, checksum calculation and validation of ``when_required``,
+a finite connect timeout, a finite read timeout, and a bounded
+standard-mode retry budget. That retry mode repeats the same request,
+so ``IfMatch`` and ``IfNoneMatch`` remain on every attempt. This
+wrapper calls the injected client once and does not build another put
+without its precondition.
 
 A download is rejected before it is read when ``ContentLength`` is
 missing, not a whole number, or larger than 5 GiB. Five GiB is the
@@ -55,7 +58,11 @@ _MISSING = {"404", "NoSuchKey", "NotFound"}
 _FORBIDDEN = {"403", "AccessDenied", "Forbidden"}
 _PRECONDITION = {"412", "PreconditionFailed"}
 _ENDPOINT_SUFFIX = ".r2.cloudflarestorage.com"
+_ENDPOINT_URL = re.compile(
+    r"^https://[0-9a-f]{32}\.r2\.cloudflarestorage\.com$"
+)
 _REGION_NAME = "auto"
+_REGION = re.compile(r"^auto$")
 _SIGNATURE_VERSION = "s3v4"
 _SERVICE_NAME = "s3"
 _ADDRESSING_STYLE = "path"
@@ -297,7 +304,7 @@ class R2ClientConfiguration:
     def config_options(self):
         """Return S3 client settings with no credentials and no endpoint.
 
-        A future constructor passes this mapping to its configuration
+        ``create_r2_client`` passes this mapping to its configuration
         object and passes :attr:`access_key_id` and
         :attr:`secret_access_key` separately. ``retries.mode`` is
         ``standard``, which repeats the same request. Conditional
@@ -305,22 +312,53 @@ class R2ClientConfiguration:
         does not import a client library or open a connection.
         """
 
-        return {
-            "signature_version": self._signature_version,
-            "connect_timeout": self._connect_timeout_seconds,
-            "read_timeout": self._read_timeout_seconds,
-            "retries": {
-                "max_attempts": self._max_attempts,
-                "mode": self._retry_mode,
-            },
-            "s3": {"addressing_style": self._addressing_style},
-            "request_checksum_calculation": (
-                self._request_checksum_calculation
-            ),
-            "response_checksum_validation": (
+        return _verified_config_options(
+            signature_version=self._signature_version,
+            connect_timeout_seconds=self._connect_timeout_seconds,
+            read_timeout_seconds=self._read_timeout_seconds,
+            max_attempts=self._max_attempts,
+            retry_mode=self._retry_mode,
+            addressing_style=self._addressing_style,
+            request_checksum_calculation=self._request_checksum_calculation,
+            response_checksum_validation=(
                 self._response_checksum_validation
             ),
-        }
+        )
+
+
+def _verified_config_options(
+    *,
+    signature_version,
+    connect_timeout_seconds,
+    read_timeout_seconds,
+    max_attempts,
+    retry_mode,
+    addressing_style,
+    request_checksum_calculation,
+    response_checksum_validation,
+):
+    return {
+        "signature_version": signature_version,
+        "connect_timeout": connect_timeout_seconds,
+        "read_timeout": read_timeout_seconds,
+        "retries": {
+            "max_attempts": max_attempts,
+            "mode": retry_mode,
+        },
+        "s3": {"addressing_style": addressing_style},
+        "request_checksum_calculation": request_checksum_calculation,
+        "response_checksum_validation": response_checksum_validation,
+    }
+
+
+def _load_s3_client_builder():
+    """Import the S3 client library when a client is constructed."""
+
+    import boto3
+    from botocore.config import Config
+    from botocore.session import Session
+
+    return boto3, Config, Session
 
 
 def configure_r2_client(
@@ -360,6 +398,70 @@ def configure_r2_client(
         max_attempts=MAX_ATTEMPTS,
         retry_mode=_RETRY_MODE,
     )
+
+
+def create_r2_client(
+    *,
+    endpoint_url,
+    region_name,
+    access_key_id,
+    secret_access_key,
+):
+    """Construct one S3 client from explicit credentials.
+
+    ``endpoint_url``, ``region_name``, ``access_key_id``, and
+    ``secret_access_key`` are required. The client uses a new session
+    and the verified configuration. This does not read the process
+    environment, load a profile, create a bucket, or send a request.
+    """
+
+    endpoint_url = _require_text(endpoint_url, _ENDPOINT_URL, _config_failed)
+    region_name = _require_text(region_name, _REGION, _config_failed)
+    access_key_id = _require_text(
+        access_key_id,
+        _ACCESS_KEY_ID,
+        _config_failed,
+    )
+    secret_access_key = _require_text(
+        secret_access_key,
+        _SECRET_ACCESS_KEY,
+        _config_failed,
+    )
+    options = _verified_config_options(
+        signature_version=_SIGNATURE_VERSION,
+        connect_timeout_seconds=CONNECT_TIMEOUT_SECONDS,
+        read_timeout_seconds=READ_TIMEOUT_SECONDS,
+        max_attempts=MAX_ATTEMPTS,
+        retry_mode=_RETRY_MODE,
+        addressing_style=_ADDRESSING_STYLE,
+        request_checksum_calculation=_CHECKSUM_MODE,
+        response_checksum_validation=_CHECKSUM_MODE,
+    )
+    failed = False
+    client = None
+    try:
+        boto3, config_type, session_type = _load_s3_client_builder()
+        botocore_session = session_type()
+        bound = boto3.Session(
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=region_name,
+            botocore_session=botocore_session,
+        )
+        client = bound.client(
+            _SERVICE_NAME,
+            endpoint_url=endpoint_url,
+            region_name=region_name,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            config=config_type(**options),
+        )
+    except Exception:
+        failed = True
+        client = None
+    if failed or client is None:
+        _config_failed()
+    return client
 
 
 class R2Client:

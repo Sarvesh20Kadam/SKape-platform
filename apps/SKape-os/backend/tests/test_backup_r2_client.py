@@ -1,10 +1,12 @@
 """Offline checks for the injected R2 client wrapper.
 
-The client is fake. These tests do not import boto3, contact Cloudflare,
-open a network connection, or run PostgreSQL.
+Most clients are fake. One test builds a local boto3 client and does
+not send a request. These tests do not contact Cloudflare, open a
+network connection, or run PostgreSQL.
 """
 
 import hashlib
+import socket
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from backup.r2_client import (
     READ_TIMEOUT_SECONDS,
     R2Client,
     configure_r2_client,
+    create_r2_client,
 )
 
 
@@ -394,12 +397,17 @@ def test_client_errors_hide_secrets_and_do_not_call_with_a_bad_key():
     assert fake.calls == []
 
 
-def test_configuration_names_r2_without_creating_a_client():
+def test_configuration_names_r2_without_creating_a_client(monkeypatch):
     source = Path(__file__).resolve().parents[1].joinpath(
         "backup", "r2_client.py"
     ).read_text(encoding="utf-8")
-    assert "import boto3" not in source
-    assert "boto3.client" not in source
+    def _refuse_builder():
+        raise AssertionError("builder")
+
+    monkeypatch.setattr(
+        "backup.r2_client._load_s3_client_builder",
+        _refuse_builder,
+    )
     config = configure_r2_client(
         account_id=ACCOUNT_ID,
         bucket=BUCKET,
@@ -436,8 +444,9 @@ def test_configuration_names_r2_without_creating_a_client():
     assert "aws_secret_access_key" not in options
     assert SECRET not in repr(options)
     assert "os.environ" not in source
-    assert "import boto3" not in source
-    assert "import botocore" not in source
+    assert "boto3.client(" not in source
+    assert source.count("import boto3") == 1
+    assert source.count("from botocore.session import Session") == 1
     assert SECRET not in repr(config)
     assert ACCESS_KEY_ID not in repr(config)
     assert "https://" not in repr(config)
@@ -706,3 +715,251 @@ def test_wrapper_publishes_through_the_existing_protocol(tmp_path):
     assert puts[-1]["IfNoneMatch"] == "*"
     assert all("delete" not in str(call) for call in fake.calls)
     assert not hasattr(store, "delete")
+
+
+ENDPOINT = "https://%s.r2.cloudflarestorage.com" % ACCOUNT_ID
+
+
+class _FactoryDouble:
+    def __init__(self):
+        self.botocore_sessions = []
+        self.boto3_sessions = []
+        self.client_calls = []
+        self.service_calls = []
+        self.config_calls = []
+        self.services = []
+
+    def install(self, monkeypatch):
+        recording = self
+
+        class Config:
+            def __init__(self, **kwargs):
+                recording.config_calls.append(kwargs)
+                self.kwargs = kwargs
+
+        class BotocoreSession:
+            def __init__(self, *args, **kwargs):
+                recording.botocore_sessions.append((args, kwargs))
+                self.args = args
+                self.kwargs = kwargs
+
+        class Service:
+            def __getattr__(self, name):
+                def called(*args, **kwargs):
+                    recording.service_calls.append(name)
+                    raise AssertionError(name)
+
+                return called
+
+        class Bound:
+            def __init__(self, **kwargs):
+                recording.boto3_sessions.append(kwargs)
+                self.kwargs = kwargs
+                self.service = Service()
+
+            def client(self, *args, **kwargs):
+                recording.client_calls.append((args, kwargs))
+                recording.services.append(self.service)
+                return self.service
+
+        class Boto3:
+            @staticmethod
+            def Session(**kwargs):
+                return Bound(**kwargs)
+
+        monkeypatch.setattr(
+            "backup.r2_client._load_s3_client_builder",
+            lambda: (Boto3, Config, BotocoreSession),
+        )
+
+
+def test_factory_passes_explicit_credentials_and_verified_config(
+    monkeypatch,
+):
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "e" * 32)
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "f" * 64)
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "g" * 40)
+    monkeypatch.setenv("AWS_PROFILE", "default")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    double = _FactoryDouble()
+    double.install(monkeypatch)
+
+    def _refuse_network(*args, **kwargs):
+        raise AssertionError("network")
+
+    monkeypatch.setattr("socket.create_connection", _refuse_network)
+    client = create_r2_client(
+        endpoint_url=ENDPOINT,
+        region_name="auto",
+        access_key_id=ACCESS_KEY_ID,
+        secret_access_key=SECRET,
+    )
+    assert client is double.services[0]
+    assert len(double.botocore_sessions) == 1
+    assert double.botocore_sessions[0] == ((), {})
+    assert len(double.boto3_sessions) == 1
+    assert double.boto3_sessions[0] == {
+        "aws_access_key_id": ACCESS_KEY_ID,
+        "aws_secret_access_key": SECRET,
+        "region_name": "auto",
+        "botocore_session": double.boto3_sessions[0]["botocore_session"],
+    }
+    assert "profile_name" not in double.boto3_sessions[0]
+    assert double.boto3_sessions[0]["aws_access_key_id"] != "e" * 32
+    assert len(double.client_calls) == 1
+    args, kwargs = double.client_calls[0]
+    assert args == ("s3",)
+    assert kwargs["endpoint_url"] == ENDPOINT
+    assert kwargs["region_name"] == "auto"
+    assert kwargs["aws_access_key_id"] == ACCESS_KEY_ID
+    assert kwargs["aws_secret_access_key"] == SECRET
+    assert "aws_session_token" not in kwargs
+    expected = configure_r2_client(
+        account_id=ACCOUNT_ID,
+        bucket=BUCKET,
+        access_key_id=ACCESS_KEY_ID,
+        secret_access_key=SECRET,
+    ).config_options()
+    assert double.config_calls == [expected]
+    assert kwargs["config"].kwargs == expected
+    assert SECRET not in repr(kwargs["config"])
+    assert double.service_calls == []
+
+
+def test_factory_rejects_invalid_configuration_before_construction(
+    monkeypatch,
+):
+    double = _FactoryDouble()
+    double.install(monkeypatch)
+    leaked = "LEAKED-SECRET-VALUE-" + ("d" * 32)
+    samples = [
+        {"endpoint_url": "http://%s.r2.cloudflarestorage.com" % ACCOUNT_ID},
+        {"endpoint_url": ENDPOINT + "/bucket"},
+        {"endpoint_url": "https://user:%s@example.invalid" % SECRET},
+        {"endpoint_url": None},
+        {"region_name": "us-east-1"},
+        {"region_name": ""},
+        {"region_name": None},
+        {"access_key_id": "short"},
+        {"secret_access_key": leaked},
+    ]
+    for override in samples:
+        values = {
+            "endpoint_url": ENDPOINT,
+            "region_name": "auto",
+            "access_key_id": ACCESS_KEY_ID,
+            "secret_access_key": SECRET,
+        }
+        values.update(override)
+        with pytest.raises(
+            BackupError,
+            match="backup object store configuration is invalid",
+        ) as caught:
+            create_r2_client(**values)
+        _assert_safe(caught)
+        assert leaked not in str(caught.value)
+        assert double.botocore_sessions == []
+        assert double.client_calls == []
+        assert double.service_calls == []
+
+
+def test_factory_hides_sdk_failures(monkeypatch):
+    def _explode():
+        raise RuntimeError(SECRET + " " + ENDPOINT)
+
+    monkeypatch.setattr(
+        "backup.r2_client._load_s3_client_builder",
+        _explode,
+    )
+    with pytest.raises(
+        BackupError,
+        match="backup object store configuration is invalid",
+    ) as caught:
+        create_r2_client(
+            endpoint_url=ENDPOINT,
+            region_name="auto",
+            access_key_id=ACCESS_KEY_ID,
+            secret_access_key=SECRET,
+        )
+    _assert_safe(caught)
+
+
+def test_factory_requires_explicit_arguments():
+    with pytest.raises(TypeError):
+        create_r2_client(
+            region_name="auto",
+            access_key_id=ACCESS_KEY_ID,
+            secret_access_key=SECRET,
+        )
+
+
+def _require(condition, message):
+    if not condition:
+        raise AssertionError(message)
+
+
+def _refuse_network(*_args, **_kwargs):
+    raise AssertionError("network connection attempted")
+
+
+def test_real_client_uses_explicit_credentials(monkeypatch, tmp_path):
+    pytest.importorskip("boto3")
+    profile_access = "d" * 32
+    profile_secret = "e" * 64
+    profile_token = "h" * 40
+    env_access = "i" * 32
+    config_file = tmp_path / "config"
+    credential_file = tmp_path / "credentials"
+    config_file.write_text(
+        "[default]\nregion = eu-west-1\n",
+        encoding="utf-8",
+    )
+    credential_file.write_text(
+        "[default]\naws_access_key_id = %s\n"
+        "aws_secret_access_key = %s\n"
+        "aws_session_token = %s\n"
+        % (profile_access, profile_secret, profile_token),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(credential_file))
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", env_access)
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "j" * 64)
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "k" * 40)
+    monkeypatch.setenv("AWS_PROFILE", "default")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setattr(socket, "create_connection", _refuse_network)
+    monkeypatch.setattr(socket.socket, "connect", _refuse_network)
+
+    client = create_r2_client(
+        endpoint_url=ENDPOINT,
+        region_name="auto",
+        access_key_id=ACCESS_KEY_ID,
+        secret_access_key=SECRET,
+    )
+    try:
+        provider = client._request_signer._credentials
+        _require(
+            type(provider).__name__ == "Credentials",
+            "credential provider missing",
+        )
+        _require(provider.method == "explicit", "credential method mismatch")
+        _require(provider.access_key == ACCESS_KEY_ID, "access key mismatch")
+        _require(provider.secret_key == SECRET, "secret key mismatch")
+        _require(provider.token is None, "session token present")
+        _require(
+            provider.access_key != profile_access,
+            "profile access key used",
+        )
+        _require(provider.access_key != env_access, "environment access key used")
+        _require(provider.secret_key != profile_secret, "profile secret used")
+        _require(client.meta.endpoint_url == ENDPOINT, "endpoint mismatch")
+        _require(client.meta.region_name == "auto", "region mismatch")
+        _require(
+            client.meta.config.signature_version == "s3v4",
+            "signature mismatch",
+        )
+        addressing = (client.meta.config.s3 or {}).get("addressing_style")
+        _require(addressing == "path", "addressing style mismatch")
+    finally:
+        client.close()
