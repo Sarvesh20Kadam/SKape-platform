@@ -38,6 +38,12 @@ The printed durations do not prove a proposed four-hour recovery time
 objective or a proposed 24-hour recovery point objective. They describe
 one synthetic run on the machine that executed the test.
 
+`backup.r2.publish_remote_backup` can be exercised with an in-memory
+object store. That test checks manifest, checksum, and pointer rules.
+It does not contact Cloudflare R2, create a bucket, or prove off-site
+retention, a recovery point objective, a recovery time objective, or
+production recovery.
+
 ## Requirements
 
 - PostgreSQL client tools `pg_dump` and `pg_restore` on `PATH`, at least
