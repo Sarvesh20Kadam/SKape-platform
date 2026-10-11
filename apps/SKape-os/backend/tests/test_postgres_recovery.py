@@ -11,6 +11,7 @@ import importlib.util
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -576,24 +577,93 @@ def test_drop_helper_refuses_protected_database_without_connecting(name):
     assert attempts == []
 
 
+def _normalized_path(candidate):
+    try:
+        rendered = os.fspath(candidate)
+    except TypeError:
+        return None
+    if isinstance(rendered, bytes):
+        return None
+    return os.path.normcase(rendered)
+
+
+class _StatMode:
+    """Real stat result with only ``st_mode`` replaced."""
+
+    def __init__(self, result, mode):
+        self._result = result
+        self.st_mode = mode
+
+    def __getattr__(self, name):
+        return getattr(self._result, name)
+
+    def __getitem__(self, index):
+        if index == 0:
+            return self.st_mode
+        return self._result[index]
+
+
+def _stat_with_mode(path, mode):
+    """Report ``mode`` for one file and real results for every other path.
+
+    Python 3.12 pathlib calls ``os.stat`` with ``follow_symlinks``. Pytest
+    cleanup and traceback formatting then read ``st_size`` from the result.
+    """
+
+    original = os.stat
+    target = _normalized_path(path)
+
+    def fake_stat(candidate, *, dir_fd=None, follow_symlinks=True):
+        result = original(
+            candidate,
+            dir_fd=dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+        if dir_fd is not None or _normalized_path(candidate) != target:
+            return result
+        return _StatMode(result, mode)
+
+    return fake_stat
+
+
+def _chmod_for_target(path, on_target):
+    original = os.chmod
+    target = _normalized_path(path)
+
+    def fake_chmod(candidate, mode, *, dir_fd=None, follow_symlinks=True):
+        if dir_fd is None and _normalized_path(candidate) == target:
+            return on_target(mode)
+        return original(
+            candidate,
+            mode,
+            dir_fd=dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    return fake_chmod
+
+
 def test_posix_password_file_must_be_owner_only(tmp_path, monkeypatch):
     path = tmp_path / "pgpass"
-    path.write_text("unused\n", encoding="utf-8")
+    contents = "unused\n"
+    path.write_text(contents, encoding="utf-8")
+    written = path.read_bytes()
     monkeypatch.setattr(os, "name", "posix")
     requested = []
     monkeypatch.setattr(
         os,
         "chmod",
-        lambda target, mode: requested.append(mode),
+        _chmod_for_target(path, requested.append),
     )
-
-    class Result:
-        st_mode = 0o100600
-
-    monkeypatch.setattr(os, "stat", lambda target: Result())
+    monkeypatch.setattr(os, "stat", _stat_with_mode(path, 0o100600))
     _restrict_password_file(path)
+    observed = path.stat()
     assert requested == [0o600]
+    assert observed.st_mode & 0o777 == 0o600
+    assert observed.st_size == len(written)
     assert path.exists()
+    assert stat.S_ISDIR(os.stat(tmp_path, follow_symlinks=True).st_mode)
+    assert tmp_path.is_dir()
 
 
 def test_posix_password_file_is_removed_when_restriction_fails(
@@ -603,18 +673,17 @@ def test_posix_password_file_is_removed_when_restriction_fails(
     path = tmp_path / "pgpass"
     path.write_text("unused\n", encoding="utf-8")
     monkeypatch.setattr(os, "name", "posix")
-    monkeypatch.setattr(os, "chmod", lambda target, mode: None)
-
-    class Result:
-        st_mode = 0o100644
-
-    monkeypatch.setattr(os, "stat", lambda target: Result())
+    monkeypatch.setattr(os, "chmod", _chmod_for_target(path, lambda mode: None))
+    monkeypatch.setattr(os, "stat", _stat_with_mode(path, 0o100644))
     with pytest.raises(
         pytest.fail.Exception,
         match="could not be restricted",
     ):
         _restrict_password_file(path)
     assert not path.exists()
+    with pytest.raises(FileNotFoundError):
+        os.stat(path, follow_symlinks=True)
+    assert stat.S_ISDIR(os.stat(tmp_path, follow_symlinks=True).st_mode)
 
 
 def test_windows_password_file_does_not_use_unix_mode(tmp_path, monkeypatch):
