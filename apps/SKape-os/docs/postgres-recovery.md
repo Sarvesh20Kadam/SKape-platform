@@ -63,6 +63,41 @@ object-store client separately from the API requirements. CI does not
 install that file. Compatibility of that pin with these client settings
 is not established by an installed copy of the libraries.
 
+## R2 smoke harness
+
+`python -m backup.smoke`, run from `apps/SKape-os/backend`, is an opt-in
+check for `R2Client`. It is not a recovery, retention, or PITR drill.
+This repository has not run it against Cloudflare.
+
+The harness reads only these variables. It does not read
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, or a
+credential file. A missing opt-in flag or a bucket that is not clearly
+non-production stops the process before a client is constructed.
+
+- `SKAPE_R2_SMOKE=1`
+- `SKAPE_R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`
+- `SKAPE_R2_REGION=auto`
+- `SKAPE_R2_BUCKET` set to a dedicated bucket whose name starts with
+  `smoke-`. A name segment of `prod` or `production` is rejected.
+- `SKAPE_R2_ACCESS_KEY_ID`
+- `SKAPE_R2_SECRET_ACCESS_KEY`
+
+The token needs `GetObject`, `PutObject`, and `ListBucket` on that
+bucket. It must not have `DeleteObject`. The harness writes only
+`logical/daily/smoke-<time>-<nonce>.dump` and the matching `.json`
+key. It heads `logical/latest.json` before and after the writes and
+does not write that key. It does not call `publish_remote_backup`,
+create a bucket, or delete an object. Failures use fixed messages and
+do not include the secret.
+
+Cleanup is a separate operator action with a different principal.
+The harness does not delete. On success it prints both keys to
+stdout. If an object operation fails after the run has started, stderr
+prints the fixed error and then those same two keys. A configuration
+or client-construction failure, before any object operation, prints
+only the fixed error and does not list keys. Delete only the printed
+keys. Do not point this harness at a production bucket or database.
+
 ## Requirements
 
 - PostgreSQL client tools `pg_dump` and `pg_restore` on `PATH`, at least
