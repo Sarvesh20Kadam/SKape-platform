@@ -20,6 +20,7 @@ Object keys are ``logical/<class>/<backup-id>.dump``,
 ``logical/<class>/<backup-id>.json``, and ``logical/latest.json``.
 The class and any source backup id stay out of the manifest body.
 ``latest`` is written only after the stored dump and manifest match.
+``backup.r2_client`` adapts an injected S3 client to this protocol.
 """
 
 import hashlib

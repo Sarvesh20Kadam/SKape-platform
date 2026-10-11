@@ -44,6 +44,24 @@ It does not contact Cloudflare R2, create a bucket, or prove off-site
 retention, a recovery point objective, a recovery time objective, or
 production recovery.
 
+`backup.r2_client` adapts an injected S3 client to that same `head`,
+`get`, and conditional `put` protocol. A missing object stays distinct
+from a forbidden response. ETags remain quoted concurrency tokens.
+`configure_r2_client` names explicit credentials, path-style
+addressing, signature version `s3v4`, checksum calculation and
+validation of `when_required`, a 10-second connect timeout, a 60-second
+read timeout, and at most three standard-mode attempts. That retry mode
+repeats the same request, so conditional headers stay on each attempt.
+The wrapper does not construct a client or read ambient credentials. A
+download whose `ContentLength` is missing, invalid, or larger than 5
+GiB is rejected before it is read. Five GiB is the single `PutObject`
+maximum. A response body that defines `close` is closed after success
+and after rejection. Those tests use a fake client. They do not contact
+Cloudflare R2 or create a bucket. `requirements-backup.txt` pins the
+object-store client separately from the API requirements. CI does not
+install that file. Compatibility of that pin with these client settings
+is not established by an installed copy of the libraries.
+
 ## Requirements
 
 - PostgreSQL client tools `pg_dump` and `pg_restore` on `PATH`, at least
