@@ -33,11 +33,16 @@ PostgreSQL 16 is the major version used by the backend tests and the
 isolated recovery proof. Startup does not reject another PostgreSQL
 major version.
 
-The frontend build reads `VITE_API_URL` from `apps/SKape-os/frontend/src/api/client.ts`.
-The repository does not set a default. Client requests use paths such as
-`/users/login` and `/projects/`. The API serves those routes under
+The frontend resolves `VITE_API_URL` in
+`apps/SKape-os/frontend/src/api/apiBaseUrl.ts`. The Axios client uses
+that result and does not set a default. Client requests use paths such
+as `/users/login` and `/projects/`. The API serves those routes under
 `/api/v1`, so `VITE_API_URL` must be the HTTPS API origin followed by
-`/api/v1`.
+`/api/v1`. `npm run build` fails when the value is missing, malformed,
+not HTTPS, local, or does not end with `/api/v1`. A trailing slash is
+removed. The production build does not fall back to localhost.
+`npm run dev` accepts HTTP only for an explicit `localhost`,
+`127.0.0.1`, or `::1` address with the same prefix.
 
 `SKAPE_CORS_ORIGINS` lists the browser origins allowed to call the API.
 It must contain the browser-visible HTTPS frontend origin, with no path.
@@ -49,7 +54,12 @@ The backend CI workflow installs the Python 3.12 series.
 `apps/SKape-os/backend/.python-version` requests that same series and
 does not name a patch release. The frontend lockfile requires Node
 `^20.19.0` or `>=22.12.0` for Vite 8.2.0. This repository does not pin
-a Node patch release.
+a Node patch release. `.github/workflows/skape-os-frontend.yml` is configured to select
+Node 22, install from the lockfile, and run lint, the API URL tests,
+and a production build. A second build with `VITE_API_URL` unset must
+fail with `VITE_API_URL is required.` The workflow does not deploy.
+Defining the workflow does not record a completed GitHub Actions run. The staging contract is
+`apps/SKape-os/docs/staging-deployment.md`.
 
 ## Intended order
 

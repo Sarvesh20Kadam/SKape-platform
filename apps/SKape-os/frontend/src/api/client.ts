@@ -1,7 +1,12 @@
 import axios from "axios";
 
+import { resolveApiBaseUrl } from "./apiBaseUrl.ts";
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: resolveApiBaseUrl(
+    import.meta.env.VITE_API_URL,
+    import.meta.env.PROD ? "production" : "development",
+  ),
   timeout: 10000,
 
   headers: {

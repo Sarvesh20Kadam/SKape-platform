@@ -1,9 +1,10 @@
 import asyncio
+import inspect
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
+from app.main import create_app, lifespan
 from app.runtime_config import RuntimeConfigError
 
 
@@ -148,6 +149,19 @@ def test_production_rejects_http_origins(monkeypatch, origins):
         create_app()
 
 
+@pytest.mark.parametrize(
+    "origins",
+    [
+        "https://app.example/app",
+        "https://app.example/api/v1",
+    ],
+)
+def test_production_rejects_origins_with_a_path(monkeypatch, origins):
+    _production(monkeypatch, origins=origins)
+    with pytest.raises(RuntimeConfigError, match="invalid origin"):
+        create_app()
+
+
 def test_production_accepts_explicit_https_origins(
     quiet_monitor,
     monkeypatch,
@@ -264,6 +278,37 @@ def test_unrecognized_environment_is_rejected(monkeypatch):
     monkeypatch.setenv("SKAPE_ENV", "staging")
     with pytest.raises(RuntimeConfigError, match="SKAPE_ENV"):
         create_app()
+
+
+def test_startup_rejects_a_short_signing_secret(monkeypatch):
+    monkeypatch.setattr("app.security.SECRET_KEY", "short")
+    attempts = _forbid_database(monkeypatch)
+    with pytest.raises(RuntimeError, match="missing or too short"):
+        create_app()
+    assert attempts == []
+
+
+def test_startup_runs_one_monitor_and_does_not_migrate(monkeypatch):
+    entered = []
+
+    async def idle():
+        entered.append("started")
+        try:
+            while True:
+                await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            entered.append("stopped")
+            return
+
+    monkeypatch.setattr("app.main.device_monitor", idle)
+    monkeypatch.delenv("SKAPE_ENV", raising=False)
+    application = create_app()
+    with TestClient(application):
+        assert entered == ["started"]
+    assert entered == ["started", "stopped"]
+    source = inspect.getsource(lifespan)
+    assert "alembic" not in source.lower()
+    assert "upgrade" not in source
 
 
 def test_production_spelling_cannot_skip_the_gate(monkeypatch):

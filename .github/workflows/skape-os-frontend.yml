@@ -1,0 +1,45 @@
+name: SKape OS frontend
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  frontend:
+    name: Lint, test, and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/SKape-os/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/SKape-os/frontend/package-lock.json
+      - name: Install dependencies from the lockfile
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test the API URL contract
+        run: npm test
+      - name: Production build with a non-production placeholder
+        env:
+          VITE_API_URL: https://staging.example.invalid/api/v1
+        run: npm run build
+      - name: Production build fails without a valid API URL
+        run: |
+          unset VITE_API_URL
+          set +e
+          output=$(npm run build 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "The production build accepted a missing VITE_API_URL."
+            exit 1
+          fi
+          if ! printf '%s\n' "$output" | grep -F "VITE_API_URL is required." >/dev/null; then
+            echo "The production build failed for a reason other than a missing VITE_API_URL."
+            exit 1
+          fi

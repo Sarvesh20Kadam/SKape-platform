@@ -129,8 +129,12 @@ pin a Node patch release. Do not invent one. The static-site build must
 use a release inside that range, confirmed by a successful build.
 
 Set `VITE_API_URL` for that build to the HTTPS API origin followed by
-`/api/v1`. The client has no default, and its request paths do not
-include `/api/v1`. Changing the value requires a new build.
+`/api/v1`. `npm run build` rejects a missing, non-HTTPS, local, or
+otherwise invalid value and does not fall back to localhost. Request
+paths do not include `/api/v1`. Changing the value requires a new
+build. This remains a proposal. The frontend workflow is configured
+to build with a placeholder and does not publish the site. A defined
+workflow is not a completed deployment or a completed CI run.
 
 The frontend uses browser routing. The proposed static host rewrites
 client routes to `/index.html`. A host that only serves files that

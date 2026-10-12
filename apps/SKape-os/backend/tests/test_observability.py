@@ -286,9 +286,20 @@ def test_monitor_failure_log_redacts_the_database_url(
         "app.services.device_monitor.asyncio.sleep",
         stop,
     )
+    closed = []
+
+    class RecordingSession:
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(
+        "app.services.device_monitor.SessionLocal",
+        lambda: RecordingSession(),
+    )
     with caplog.at_level(logging.ERROR, logger="skape"):
         with pytest.raises(asyncio.CancelledError):
             asyncio.run(device_monitor())
+    assert closed == [True]
     assert "secret-value" not in caplog.text
     assert "db-password" not in caplog.text
     assert "postgresql://" not in caplog.text
