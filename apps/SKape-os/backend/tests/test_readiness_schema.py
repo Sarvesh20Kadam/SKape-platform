@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import json
 import logging
 import os
 import sys
@@ -422,3 +423,203 @@ def test_production_readiness_accepts_the_head_revision(
     assert REPOSITORY_HEAD not in ready.text
     assert opened[0].closed
     assert ready.headers["x-request-id"] == "ready-head"
+
+
+class _Rows:
+    def __init__(self, value=None, rows=None):
+        self._value = value
+        self._rows = [] if rows is None else rows
+
+    def scalar(self):
+        return self._value
+
+    def scalars(self):
+        rows = self._rows
+        return SimpleNamespace(all=lambda: rows)
+
+
+class _ScriptedSession:
+    def __init__(self, steps):
+        self.closed = False
+        self.statements = []
+        self._steps = list(steps)
+
+    def execute(self, statement, *args, **kwargs):
+        self.statements.append(str(statement))
+        if not self._steps:
+            raise AssertionError(str(statement))
+        step = self._steps.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+    def close(self):
+        self.closed = True
+
+
+def _production_ready(monkeypatch, session, request_id):
+    monkeypatch.setenv("SKAPE_ENV", "production")
+    monkeypatch.setattr(
+        "app.api.health.SessionLocal",
+        lambda: session,
+    )
+    return readiness(
+        SimpleNamespace(
+            state=SimpleNamespace(request_id=request_id)
+        )
+    )
+
+
+def _assert_unavailable(response):
+    assert response.status_code == 503
+    text = response.body.decode()
+    assert json.loads(text) == {"status": "unavailable"}
+    assert "postgresql://" not in text
+    assert "secret-value" not in text
+    assert "server_version_num" not in text
+
+
+def _head_steps(version):
+    return [
+        _Rows(1),
+        _Rows(version),
+        _Rows("alembic_version"),
+        _Rows(rows=[REPOSITORY_HEAD]),
+    ]
+
+
+@pytest.mark.parametrize(
+    "version",
+    [150000, "150004", "159999"],
+)
+def test_postgresql_15_fails_readiness(monkeypatch, version):
+    session = _ScriptedSession([_Rows(1), _Rows(version)])
+    response = _production_ready(monkeypatch, session, "pg-15")
+    _assert_unavailable(response)
+    assert response.headers["x-request-id"] == "pg-15"
+    assert session.closed
+    assert session.statements == [
+        "SELECT 1",
+        "SHOW server_version_num",
+    ]
+
+
+@pytest.mark.parametrize(
+    "version",
+    [160000, "160004", "160010", 169999],
+)
+def test_postgresql_16_passes_when_the_schema_matches(
+    monkeypatch,
+    version,
+):
+    session = _ScriptedSession(_head_steps(version))
+    body = _production_ready(monkeypatch, session, "pg-16")
+    assert body == {
+        "status": "ready",
+        "service": settings.APP_NAME,
+        "version": settings.VERSION,
+    }
+    assert session.closed
+    assert "SHOW server_version_num" in session.statements
+    assert "SELECT version_num FROM alembic_version" in (
+        session.statements
+    )
+
+
+@pytest.mark.parametrize(
+    "version",
+    [170000, "170001", "179999"],
+)
+def test_postgresql_17_fails_readiness(monkeypatch, version):
+    session = _ScriptedSession([_Rows(1), _Rows(version)])
+    response = _production_ready(monkeypatch, session, "pg-17")
+    _assert_unavailable(response)
+    assert session.closed
+    assert "alembic_version" not in " ".join(session.statements)
+
+
+@pytest.mark.parametrize(
+    "version",
+    [None, "", "   ", "16.10", "abc", True, 16, "10000", b"160000"],
+)
+def test_malformed_postgresql_version_fails_closed(
+    monkeypatch,
+    version,
+):
+    session = _ScriptedSession([_Rows(1), _Rows(version)])
+    response = _production_ready(monkeypatch, session, "pg-bad")
+    _assert_unavailable(response)
+    assert session.closed
+    assert "alembic_version" not in " ".join(session.statements)
+
+
+def test_postgresql_version_query_error_is_generic(
+    monkeypatch,
+    caplog,
+):
+    session = _ScriptedSession(
+        [
+            _Rows(1),
+            OperationalError(
+                "SHOW server_version_num",
+                {},
+                Exception(f"connection to {SECRET_URL} failed"),
+            ),
+        ]
+    )
+    with caplog.at_level("ERROR", logger="skape"):
+        response = _production_ready(
+            monkeypatch,
+            session,
+            "pg-version-down",
+        )
+    _assert_unavailable(response)
+    assert response.headers["x-request-id"] == "pg-version-down"
+    assert session.closed
+    assert "secret-value" not in caplog.text
+    assert "postgresql://" not in caplog.text
+    assert "[redacted-url]" in caplog.text
+
+
+def test_liveness_does_not_query_the_database(
+    quiet_monitor,
+    monkeypatch,
+):
+    def forbidden():
+        raise AssertionError("liveness opened a database session")
+
+    monkeypatch.setattr("app.api.health.SessionLocal", forbidden)
+    with TestClient(app) as client:
+        live = client.get("/api/v1/health/")
+    assert live.status_code == 200
+    assert live.json()["status"] == "healthy"
+    assert live.json()["version"] == settings.VERSION
+
+
+def test_postgresql_16_still_fails_when_the_schema_is_old(
+    monkeypatch,
+    caplog,
+):
+    parent = _head_parent()
+    session = _ScriptedSession(
+        [
+            _Rows(1),
+            _Rows("160004"),
+            _Rows("alembic_version"),
+            _Rows(rows=[parent]),
+        ]
+    )
+    with caplog.at_level("ERROR", logger="skape"):
+        response = _production_ready(
+            monkeypatch,
+            session,
+            "pg-16-old",
+        )
+    _assert_unavailable(response)
+    assert session.closed
+    assert "SHOW server_version_num" in session.statements
+    assert "schema revision does not match" in caplog.text
+    assert parent not in response.body.decode()
+    assert parent not in caplog.text
+    assert REPOSITORY_HEAD not in response.body.decode()
+    assert REPOSITORY_HEAD not in caplog.text

@@ -115,10 +115,13 @@ the readiness check. Require a successful ready response before using
 the site.
 
 `GET /api/v1/health/` reports process status only. It does not verify
-database connectivity or schema readiness. A ready response in
-production mode also requires `alembic_version` to match the
-repository head. A failed readiness check returns HTTP 503 and does
-not migrate.
+database connectivity, the PostgreSQL major version, or schema
+readiness. A ready response in production mode requires PostgreSQL
+major version 16 and `alembic_version` matching the repository head.
+Startup still only parses configuration: it does not connect or
+migrate. A failed readiness check returns HTTP 503 and does not
+migrate. PostgreSQL 16 must be provisioned separately before staging
+can pass readiness. This note does not record that provisioning.
 
 ## Release control
 
@@ -200,7 +203,7 @@ staging database or a chosen host.
 | Frontend lint, API URL tests, and production build | The frontend workflow, or the same local commands, on the revision being staged. The build uses an explicit HTTPS URL ending in `/api/v1`. | not recorded |
 | Backend SQLite and PostgreSQL 16 CI | Both jobs in `.github/workflows/skape-os-backend.yml` succeed on that same revision. | not recorded |
 | Disposable staging PostgreSQL migration | `alembic upgrade head` from `apps/SKape-os/backend` against the empty staging database, as its own step, before the API starts. | not recorded |
-| Readiness endpoint | `GET /api/v1/health/ready` returns ready after that migration. `GET /api/v1/health/` is not sufficient. | not recorded |
+| Readiness endpoint | `GET /api/v1/health/ready` returns ready after that migration on PostgreSQL 16. `GET /api/v1/health/` is not sufficient. Another major version stays unavailable. | not recorded |
 | HTTPS, CORS, and disabled API docs | `SKAPE_CORS_ORIGINS` is the staging frontend HTTPS origin with no path or wildcard. `/docs`, `/redoc`, and `/openapi.json` are absent. | not recorded |
 | Authentication and organization isolation | A staging login and a cross-organization request behave as the existing tenant tests require. | not recorded |
 | Frontend deep-link routing | Refreshing a client route serves the built `index.html`. | not recorded |

@@ -26,12 +26,15 @@ The API process does not call Alembic.
 
 `GET /api/v1/health/` reports the process status and does not check the
 database. `GET /api/v1/health/ready` checks connectivity and, in
-production, that `alembic_version` matches the repository heads. A
-failed readiness check returns HTTP 503. Readiness does not migrate.
+production, PostgreSQL major version 16 and that `alembic_version`
+matches the repository heads. A failed readiness check returns HTTP 503.
+Readiness does not migrate.
 
 PostgreSQL 16 is the major version used by the backend tests and the
-isolated recovery proof. Startup does not reject another PostgreSQL
-major version.
+isolated recovery proof. Startup does not connect to the database and
+does not reject a server version. Production readiness rejects a
+PostgreSQL server whose major version is not 16. PostgreSQL 16 must be
+provisioned separately before that check can succeed.
 
 The frontend resolves `VITE_API_URL` in
 `apps/SKape-os/frontend/src/api/apiBaseUrl.ts`. The Axios client uses
@@ -84,8 +87,9 @@ rollback are not selected or implemented in this repository.
    device monitor.
 6. Request `GET /api/v1/health/ready` and confirm it reports ready
    before sending user traffic. The endpoint is served by the running
-   process, so this check follows process start. A schema mismatch
-   stays unavailable and does not repair itself.
+   process, so this check follows process start. A PostgreSQL major
+   version other than 16, or a schema mismatch, stays unavailable and
+   does not repair itself.
 7. Build the frontend with `VITE_API_URL` set to the HTTPS API origin
    followed by `/api/v1`. Set `SKAPE_CORS_ORIGINS` to the browser-visible
    HTTPS frontend origin. These are different values when the frontend

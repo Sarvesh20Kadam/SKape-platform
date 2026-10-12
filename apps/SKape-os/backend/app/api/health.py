@@ -25,6 +25,40 @@ class SchemaCheckError(RuntimeError):
     """A safe readiness failure. The message has no connection details."""
 
 
+def _postgresql_major(raw):
+    """Return a PostgreSQL major version from ``server_version_num``.
+
+    ``SHOW server_version_num`` returns the numeric form as text.
+    PostgreSQL 10 and later encode the major version in the ten-thousands
+    place, so 16.4 is 160004 and 16.10 is 160010. Smaller or non-decimal
+    values fail closed. The raw value is omitted from the error.
+    """
+
+    if isinstance(raw, bool) or raw is None:
+        raise SchemaCheckError("PostgreSQL version is unavailable")
+    if isinstance(raw, int):
+        number = raw
+    elif isinstance(raw, str) and raw.strip().isdecimal():
+        number = int(raw.strip())
+    else:
+        raise SchemaCheckError("PostgreSQL version is unavailable")
+    if number < 100000:
+        raise SchemaCheckError("PostgreSQL version is unavailable")
+    return number // 10000
+
+
+def _require_postgresql_16(db):
+    """Reject a server whose major version is not 16.
+
+    Uses the readiness session. It does not open another connection
+    and does not migrate.
+    """
+
+    raw = db.execute(text("SHOW server_version_num")).scalar()
+    if _postgresql_major(raw) != 16:
+        raise SchemaCheckError("PostgreSQL major version is not 16")
+
+
 def _require_current_schema(db):
     """Reject a database that is not exactly at the script heads.
 
@@ -68,8 +102,10 @@ def readiness(request: Request):
         db = SessionLocal()
         db.execute(text("SELECT 1"))
         # Local databases are created without Alembic. Production
-        # requires the script heads and does not migrate from here.
+        # requires PostgreSQL 16 and the script heads. It does not
+        # migrate from here.
         if runtime_environment() == "production":
+            _require_postgresql_16(db)
             _require_current_schema(db)
     except Exception as exc:
         logger.error(
