@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -14,6 +15,66 @@ pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
 )
+
+SUPPORTED_JWT_ALGORITHM = "HS256"
+MIN_SIGNING_SECRET_LENGTH = 32
+MIN_PASSWORD_LENGTH = 8
+PASSWORD_TOO_SHORT = (
+    "Password must contain at least 8 characters."
+)
+# Each failed login pays this delay, including bcrypt time.
+# It slows online guessing. It is not an account lockout and
+# does not coordinate attempts across processes or workers.
+LOGIN_FAILURE_DELAY_SECONDS = 0.4
+_REJECTED_SECRETS = frozenset(
+    {
+        "secret",
+        "changeme",
+        "password",
+        "none",
+        "test-secret",
+    }
+)
+
+
+def validate_signing_configuration(
+    secret,
+    algorithm,
+) -> None:
+    """Reject missing, short, placeholder, or non-HS256 JWT settings."""
+
+    if algorithm != SUPPORTED_JWT_ALGORITHM:
+        raise RuntimeError(
+            "JWT algorithm must be HS256."
+        )
+
+    if (
+        not isinstance(secret, str)
+        or len(secret) < MIN_SIGNING_SECRET_LENGTH
+        or secret.strip().lower() in _REJECTED_SECRETS
+    ):
+        raise RuntimeError(
+            "JWT signing secret is missing or too short."
+        )
+
+
+def validate_password_length(password: str) -> None:
+    if (
+        not isinstance(password, str)
+        or len(password) < MIN_PASSWORD_LENGTH
+    ):
+        raise ValueError(PASSWORD_TOO_SHORT)
+
+
+def wait_for_login_failure(started: float) -> None:
+    remaining = LOGIN_FAILURE_DELAY_SECONDS - (
+        time.monotonic() - started
+    )
+    if remaining > 0:
+        time.sleep(remaining)
+
+
+validate_signing_configuration(SECRET_KEY, ALGORITHM)
 
 
 def hash_password(password: str) -> str:
@@ -62,7 +123,7 @@ def verify_token(token: str):
         payload = jwt.decode(
             token,
             SECRET_KEY,
-            algorithms=[ALGORITHM],
+            algorithms=[SUPPORTED_JWT_ALGORITHM],
             options={
                 "verify_signature": True,
                 "verify_exp": True,

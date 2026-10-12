@@ -3,9 +3,11 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -15,6 +17,19 @@ from app.database import Base
 
 class Alert(Base):
     __tablename__ = "alerts"
+    __table_args__ = (
+        Index(
+            "uq_alerts_unresolved_device_offline",
+            "device_id",
+            unique=True,
+            sqlite_where=text(
+                "alert_type = 'device_offline' AND NOT is_resolved"
+            ),
+            postgresql_where=text(
+                "alert_type = 'device_offline' AND NOT is_resolved"
+            ),
+        ),
+    )
 
     id = Column(
         Integer,

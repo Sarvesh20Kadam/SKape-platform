@@ -3,6 +3,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
 )
@@ -20,6 +21,14 @@ class User(Base):
     name = Column(String, nullable=False)
 
     email = Column(String, unique=True, index=True, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_users_email_lower",
+            func.lower(email),
+            unique=True,
+        ),
+    )
 
     hashed_password = Column(String, nullable=False)
 

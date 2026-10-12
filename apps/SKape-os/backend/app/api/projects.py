@@ -1,8 +1,6 @@
-print("LOADED NEW PROJECTS.PY")
-
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -46,8 +44,8 @@ def create(
 
 @router.get("/", response_model=List[ProjectResponse])
 def get_all(
-    skip: int = 0,
-    limit: int = 10,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user=Depends(
         require_role(

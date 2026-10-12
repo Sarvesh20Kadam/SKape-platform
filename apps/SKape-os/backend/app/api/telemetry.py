@@ -54,11 +54,17 @@ def create_device_telemetry(
         expected_device_id=device_id,
     )
 
-    return create_telemetry(
-        db=db,
-        device=device,
-        telemetry=telemetry,
-    )
+    try:
+        return create_telemetry(
+            db=db,
+            device=device,
+            telemetry=telemetry,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
 
 
 # ============================================================

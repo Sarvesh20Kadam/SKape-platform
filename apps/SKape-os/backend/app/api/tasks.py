@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,6 +19,8 @@ from app.schemas.task import (
     TaskCreate,
     TaskUpdate,
     TaskResponse,
+    ALLOWED_STATUSES,
+    ALLOWED_PRIORITIES,
 )
 
 
@@ -71,8 +73,15 @@ def create(
     response_model=List[TaskResponse],
 )
 def get_all(
-    skip: int = 0,
-    limit: int = 10,
+    skip: int = Query(
+        default=0,
+        ge=0,
+    ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=100,
+    ),
     status: str | None = None,
     priority: str | None = None,
     assigned_to: int | None = None,
@@ -88,20 +97,31 @@ def get_all(
         )
     ),
 ):
-    if skip < 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Skip must be greater than or equal to 0",
-        )
+    # -------------------------------------------------
+    # Validate status filter
+    # -------------------------------------------------
 
-    if limit < 1:
-        raise HTTPException(
-            status_code=400,
-            detail="Limit must be greater than 0",
-        )
+    if status is not None:
+        status = status.lower().strip()
 
-    if limit > 100:
-        limit = 100
+        if status not in ALLOWED_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid task status.",
+            )
+
+    # -------------------------------------------------
+    # Validate priority filter
+    # -------------------------------------------------
+
+    if priority is not None:
+        priority = priority.lower().strip()
+
+        if priority not in ALLOWED_PRIORITIES:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid task priority.",
+            )
 
     return db_get_tasks(
         db=db,

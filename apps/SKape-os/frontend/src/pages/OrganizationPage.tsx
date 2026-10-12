@@ -62,6 +62,10 @@ function OrganizationPage() {
   const [inviteSuccess, setInviteSuccess] =
     useState(false);
 
+  const [issuedTokens, setIssuedTokens] = useState<
+    Record<number, string>
+  >({});
+
   const [copiedInvitationId, setCopiedInvitationId] =
     useState<number | null>(null);
 
@@ -172,10 +176,15 @@ function OrganizationPage() {
       setActionError(null);
       setInviteSuccess(false);
 
-      await createInvitation({
+      const created = await createInvitation({
         email,
         role: inviteForm.role,
       });
+
+      setIssuedTokens((current) => ({
+        ...current,
+        [created.id]: created.token,
+      }));
 
       setInviteSuccess(true);
 
@@ -244,9 +253,14 @@ function OrganizationPage() {
         invitationId,
       );
 
-      await resendInvitation(
+      const issued = await resendInvitation(
         invitationId,
       );
+
+      setIssuedTokens((current) => ({
+        ...current,
+        [issued.id]: issued.token,
+      }));
     } catch {
       setActionError(
         "Unable to resend invitation. Please try again.",
@@ -280,6 +294,12 @@ function OrganizationPage() {
       await revokeInvitation(
         invitationId,
       );
+
+      setIssuedTokens((current) => {
+        const next = { ...current };
+        delete next[invitationId];
+        return next;
+      });
     } catch {
       setActionError(
         "Unable to revoke invitation. Please try again.",
@@ -891,6 +911,8 @@ function OrganizationPage() {
           ) : (
             <div className="divide-y divide-zinc-800/70">
               {invitations.map((invitation) => {
+                const issuedToken =
+                  issuedTokens[invitation.id];
                 const expiresAt =
                   new Date(
                     invitation.expires_at,
@@ -1050,14 +1072,24 @@ function OrganizationPage() {
                             <>
                               <button
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  if (!issuedToken) {
+                                    return;
+                                  }
+
                                   void handleCopyInvitationLink(
                                     invitation.id,
-                                    invitation.token,
-                                  )
+                                    issuedToken,
+                                  );
+                                }}
+                                title={
+                                  issuedToken
+                                    ? "Copy invitation link"
+                                    : "Resend this invitation to generate a new link"
                                 }
                                 disabled={
-                                  isProcessing
+                                  isProcessing ||
+                                  !issuedToken
                                 }
                                 className="
                                   inline-flex

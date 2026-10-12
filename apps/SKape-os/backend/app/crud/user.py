@@ -1,3 +1,5 @@
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
@@ -10,6 +12,25 @@ from app.security import (
     verify_password,
 )
 
+# Verified when no user matches so missing accounts take a bcrypt
+# check too. This does not make the response time identical.
+_MISSING_USER_HASH = hash_password(
+    "skape-missing-user-timing"
+)
+
+from app.crud.activity import log_activity
+
+
+ALLOWED_USER_ROLES = {
+    "admin",
+    "manager",
+    "employee",
+}
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
 
 def generate_slug(name: str) -> str:
     return (
@@ -19,40 +40,67 @@ def generate_slug(name: str) -> str:
     )
 
 
-def create_user(db: Session, user: UserCreate):
-
-    slug = generate_slug(user.organization_name)
+def create_user(
+    db: Session,
+    user: UserCreate,
+):
+    slug = generate_slug(
+        user.organization_name
+    )
 
     existing_org = (
         db.query(Organization)
-        .filter(Organization.slug == slug)
+        .filter(
+            Organization.slug == slug
+        )
         .first()
     )
 
     if existing_org:
-        raise ValueError("Organization already exists")
+        raise ValueError(
+            "Registration could not be completed."
+        )
 
     organization = Organization(
         name=user.organization_name,
         slug=slug,
-        is_active=True
-    )
-
-    db.add(organization)
-    db.commit()
-    db.refresh(organization)
-
-    db_user = User(
-        name=user.name,
-        email=user.email,
-        hashed_password=hash_password(user.password),
-        role="owner",
         is_active=True,
-        organization_id=organization.id
     )
 
-    db.add(db_user)
-    db.commit()
+    try:
+        db.add(organization)
+        db.flush()
+
+        db_user = User(
+            name=user.name,
+            email=normalize_email(user.email),
+            hashed_password=hash_password(
+                user.password
+            ),
+            role="owner",
+            is_active=True,
+            organization_id=organization.id,
+        )
+
+        db.add(db_user)
+        db.flush()
+
+        log_activity(
+            db=db,
+            action="created",
+            entity="organization",
+            entity_id=organization.id,
+            user_id=db_user.id,
+            organization_id=organization.id,
+        )
+
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError(
+            "Registration could not be completed."
+        )
+
     db.refresh(db_user)
 
     return db_user
@@ -60,11 +108,17 @@ def create_user(db: Session, user: UserCreate):
 
 def get_user_by_email(
     db: Session,
-    email: str
+    email: str,
 ):
+    normalized = normalize_email(email)
+
+    if not normalized:
+        return None
+
     return (
         db.query(User)
-        .filter(User.email == email)
+        .filter(func.lower(User.email) == normalized)
+        .order_by(User.id.asc())
         .first()
     )
 
@@ -72,63 +126,55 @@ def get_user_by_email(
 def authenticate_user(
     db: Session,
     email: str,
-    password: str
+    password: str,
 ):
-    user = get_user_by_email(db, email)
+    user = get_user_by_email(
+        db,
+        email,
+    )
 
     if not user:
+        verify_password(
+            password,
+            _MISSING_USER_HASH,
+        )
         return None
 
     if not verify_password(
         password,
-        user.hashed_password
+        user.hashed_password,
     ):
         return None
 
     return user
 
-    ALLOWED_USER_ROLES = {
-    "admin",
-    "manager",
-    "employee",
-}
-
-ALLOWED_USER_ROLES = {
-    "admin",
-    "manager",
-    "employee",
-}
-
 
 def update_user_role(
     db: Session,
     user: User,
     role: str,
+    actor_user_id: int,
 ):
     if role not in ALLOWED_USER_ROLES:
         raise ValueError(
             "Invalid user role."
         )
 
-    user.role = role
+    previous_role = user.role
 
-    db.commit()
-    db.refresh(user)
-
-    return user
-
-
-def update_user_role(
-    db: Session,
-    user: User,
-    role: str,
-):
-    if role not in ALLOWED_USER_ROLES:
-        raise ValueError(
-            "Invalid user role."
-        )
+    if previous_role == role:
+        return user
 
     user.role = role
+
+    log_activity(
+        db=db,
+        action="role_changed",
+        entity="user",
+        entity_id=user.id,
+        user_id=actor_user_id,
+        organization_id=user.organization_id,
+    )
 
     db.commit()
     db.refresh(user)

@@ -1,0 +1,7 @@
+# Object-store client for backup publication.
+# The API requirements and CI do not install this file.
+# Compatibility of IfMatch, IfNoneMatch, request_checksum_calculation,
+# and response_checksum_validation with these pins is unverified.
+# No local boto3 or botocore metadata was available to check them.
+boto3==1.43.111
+botocore==1.43.111

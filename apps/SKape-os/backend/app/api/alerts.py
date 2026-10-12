@@ -125,6 +125,7 @@ def resolve_one_alert(
     return resolve_alert(
         db=db,
         alert=alert,
+        user_id=current_user.id,
     )
 
 

@@ -8,6 +8,7 @@ from app.schemas.organization import (
     OrganizationCreate,
     OrganizationUpdate,
 )
+
 from app.crud.activity import log_activity
 
 
@@ -20,7 +21,7 @@ def generate_slug(
     name: str,
 ) -> str:
     """
-    Generate a unique organization slug from the organization name.
+    Generate a unique organization slug.
     """
 
     base_slug = re.sub(
@@ -37,7 +38,9 @@ def generate_slug(
 
     while (
         db.query(Organization)
-        .filter(Organization.slug == slug)
+        .filter(
+            Organization.slug == slug
+        )
         .first()
         is not None
     ):
@@ -57,10 +60,8 @@ def create_organization(
     user_id: int | None = None,
 ):
     """
-    Create an organization with a server-generated unique slug.
-
-    If user_id is provided, record the organization creation
-    in the activity log.
+    Create an organization with a server-generated
+    unique slug.
     """
 
     slug = generate_slug(
@@ -75,12 +76,8 @@ def create_organization(
 
     db.add(db_org)
 
-    # Get database-generated ID before activity logging.
+    # Generate database ID before activity logging.
     db.flush()
-
-    # --------------------------------------------------------
-    # Activity log
-    # --------------------------------------------------------
 
     if user_id is not None:
         log_activity(
@@ -159,6 +156,9 @@ def update_organization(
         exclude_unset=True
     )
 
+    # Lifecycle changes use deactivate/activate operations.
+    update_data.pop("is_active", None)
+
     for key, value in update_data.items():
 
         if key == "name":
@@ -174,10 +174,6 @@ def update_organization(
             key,
             value,
         )
-
-    # --------------------------------------------------------
-    # Activity log
-    # --------------------------------------------------------
 
     if user_id is not None:
         log_activity(
@@ -204,6 +200,12 @@ def delete_organization(
     organization_id: int,
     user_id: int | None = None,
 ):
+    """
+    Permanently delete an organization.
+
+    This is intentionally separate from deactivation.
+    """
+
     db_org = get_organization_by_id(
         db,
         organization_id,
@@ -214,13 +216,7 @@ def delete_organization(
 
     deleted_organization_id = db_org.id
 
-    # --------------------------------------------------------
-    # Activity log
-    #
-    # Must happen BEFORE deletion because the activity record
-    # still needs the organization context.
-    # --------------------------------------------------------
-
+    # Activity must be recorded before deletion.
     if user_id is not None:
         log_activity(
             db=db,
@@ -233,6 +229,108 @@ def delete_organization(
 
     db.delete(db_org)
     db.commit()
+
+    return db_org
+
+
+# ============================================================
+# Organization Lifecycle
+# ============================================================
+
+def deactivate_organization(
+    db: Session,
+    organization_id: int,
+    user_id: int,
+):
+    """
+    Deactivate an organization.
+
+    Deactivation is non-destructive.
+    Organization data remains in the database.
+    """
+
+    db_org = get_organization_by_id(
+        db,
+        organization_id,
+    )
+
+    if db_org is None:
+        return None
+
+    # Already inactive.
+    if not db_org.is_active:
+        return db_org
+
+    db_org.is_active = False
+
+    try:
+        log_activity(
+            db=db,
+            action="deactivated",
+            entity="organization",
+            entity_id=db_org.id,
+            user_id=user_id,
+            organization_id=db_org.id,
+        )
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(db_org)
+
+    return db_org
+
+
+# ============================================================
+# Organization Activation
+# ============================================================
+
+def activate_organization(
+    db: Session,
+    organization_id: int,
+    user_id: int,
+):
+    """
+    Reactivate an organization.
+
+    This function exists at the service/CRUD level.
+    The public API endpoint should be designed separately
+    so that an inactive organization cannot bypass lifecycle
+    security through a normal authenticated request.
+    """
+
+    db_org = get_organization_by_id(
+        db,
+        organization_id,
+    )
+
+    if db_org is None:
+        return None
+
+    # Already active.
+    if db_org.is_active:
+        return db_org
+
+    db_org.is_active = True
+
+    try:
+        log_activity(
+            db=db,
+            action="activated",
+            entity="organization",
+            entity_id=db_org.id,
+            user_id=user_id,
+            organization_id=db_org.id,
+        )
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(db_org)
 
     return db_org
 

@@ -1,37 +1,83 @@
 import asyncio
 
+from sqlalchemy import text
+
 from app.database import SessionLocal
 from app.crud.device import mark_stale_devices_offline
 from app.crud.alert import create_alert
-from app.crud.activity import log_activity
+from app.log_safety import configure_logging, get_logger, redact_sensitive
+
+
+logger = get_logger("monitor")
 
 
 CHECK_INTERVAL_SECONDS = 10
 DEVICE_TIMEOUT_SECONDS = 30
+# Session-level PostgreSQL advisory lock shared by monitor workers.
+# It is a coordination key, not a secret. SQLite has no equivalent and
+# continues to run the cycle directly.
+MONITOR_ADVISORY_LOCK_KEY = 448294001
 
 
-async def device_monitor():
-    print("[DEVICE MONITOR] Started")
+def _uses_advisory_lock(db):
+    bind = db.get_bind()
+    return bind is not None and bind.dialect.name == "postgresql"
 
-    while True:
-        db = SessionLocal()
 
+def _try_acquire_monitor_lock(db):
+    if not _uses_advisory_lock(db):
+        return True
+    acquired = db.execute(
+        text(
+            "SELECT pg_try_advisory_lock(CAST(:lock_key AS bigint))"
+        ),
+        {"lock_key": MONITOR_ADVISORY_LOCK_KEY},
+    ).scalar()
+    return bool(acquired)
+
+
+def _release_monitor_lock(db):
+    if not _uses_advisory_lock(db):
+        return
+    db.execute(
+        text(
+            "SELECT pg_advisory_unlock(CAST(:lock_key AS bigint))"
+        ),
+        {"lock_key": MONITOR_ADVISORY_LOCK_KEY},
+    )
+
+
+def run_monitor_cycle(
+    db,
+    timeout_seconds: int = DEVICE_TIMEOUT_SECONDS,
+):
+    """
+    Mark stale devices offline and record one outage alert.
+
+    Status changes and alerts commit together. Any failure rolls the
+    cycle back and is re-raised so the caller can retry from the last
+    committed state. Devices that are online without last_seen_at are
+    not part of this cycle; a missing timestamp is not treated as an
+    outage.
+
+    On PostgreSQL, one session-level advisory lock covers the cycle.
+    Another worker skips this interval instead of repeating the work.
+    The lock is released before the next interval. SQLite runs the
+    cycle without that lock.
+    """
+
+    if not _try_acquire_monitor_lock(db):
+        db.rollback()
+        return
+
+    try:
         try:
             stale_devices = mark_stale_devices_offline(
                 db=db,
-                timeout_seconds=DEVICE_TIMEOUT_SECONDS,
+                timeout_seconds=timeout_seconds,
             )
 
             for device in stale_devices:
-                print(
-                    f"[DEVICE MONITOR] "
-                    f"{device.device_id} marked OFFLINE"
-                )
-
-                # ------------------------------------------------
-                # Create offline alert
-                # ------------------------------------------------
-
                 alert, created = create_alert(
                     db=db,
                     device_id=device.id,
@@ -45,35 +91,39 @@ async def device_monitor():
                     ),
                 )
 
-                # ------------------------------------------------
-                # Audit activity
-                # ------------------------------------------------
-
                 if created:
-                    # Background monitoring has no human user.
-                    # user_id is therefore None.
-                    #
-                    # The activity table currently expects a user_id,
-                    # so we only create the audit event if the schema
-                    # permits a NULL user_id.
-
-                    print(
-                        f"[DEVICE MONITOR] "
-                        f"Offline alert created: {alert.id}"
+                    logger.info(
+                        "device marked offline device_id=%s alert_id=%s",
+                        device.device_id,
+                        alert.id,
                     )
 
             db.commit()
 
-        except Exception as error:
+        except Exception:
             db.rollback()
+            raise
+    finally:
+        _release_monitor_lock(db)
 
-            print(
-                f"[DEVICE MONITOR] Error: {error}"
+
+async def device_monitor():
+    logger.info("device monitor started")
+
+    while True:
+        db = SessionLocal()
+
+        try:
+            run_monitor_cycle(db)
+
+        except Exception as error:
+            configure_logging()
+            logger.error(
+                "device monitor cycle failed: %s",
+                redact_sensitive(f"{type(error).__name__}: {error}"),
             )
 
         finally:
             db.close()
 
-        await asyncio.sleep(
-            CHECK_INTERVAL_SECONDS
-        )
+        await asyncio.sleep(CHECK_INTERVAL_SECONDS)

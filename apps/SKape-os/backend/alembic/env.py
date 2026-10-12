@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from app.models.organization import Organization
+from app.alembic_url import apply_migration_url, create_migration_engine
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -14,13 +14,16 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(
+        config.config_file_name,
+        disable_existing_loggers=False,
+    )
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+# Fail before importing the application engine or opening a connection.
+apply_migration_url(config)
+
 from app.database import Base
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.models.invitation import Invitation
@@ -54,7 +57,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = apply_migration_url(config)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -73,9 +76,9 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+    connectable = create_migration_engine(
+        config,
+        engine_from_config,
         poolclass=pool.NullPool,
     )
 

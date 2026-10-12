@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -72,8 +72,8 @@ def create(
 )
 def get_all(
     task_id: int,
-    skip: int = 0,
-    limit: int = 10,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user=Depends(
         require_role(
@@ -120,6 +120,7 @@ def update(
             comment_id=comment_id,
             organization_id=current_user.organization_id,
             user_id=current_user.id,
+            user_role=current_user.role,
             updated_comment=comment,
         )
 
@@ -151,14 +152,19 @@ def delete(
             "owner",
             "admin",
             "manager",
+            "employee",
         )
     ),
 ):
+    # Delete follows the edit rule: owner and admin may
+    # delete any comment in the organization. Manager and
+    # employee may delete only their own.
     deleted = delete_comment(
         db=db,
         comment_id=comment_id,
         organization_id=current_user.organization_id,
         user_id=current_user.id,
+        user_role=current_user.role,
     )
 
     if deleted is None:

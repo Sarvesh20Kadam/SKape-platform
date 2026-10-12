@@ -57,6 +57,22 @@ def get_authenticated_device(
             detail="Invalid device credentials",
         )
 
+    # Reject the device before recording use. Heartbeat and
+    # telemetry both depend on this authenticator.
+    organization = device.organization
+
+    if organization is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Organization not found",
+        )
+
+    if not organization.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Organization is inactive",
+        )
+
     credential.last_used_at = datetime.now(timezone.utc)
 
     db.commit()

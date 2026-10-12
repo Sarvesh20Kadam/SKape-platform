@@ -8,18 +8,21 @@ class InvitationCreate(BaseModel):
     role: str = "employee"
 
 
-class InvitationResponse(BaseModel):
+class InvitationListResponse(BaseModel):
     id: int
     email: EmailStr
     role: str
     status: str
     organization_id: int
-    token: str
     expires_at: datetime
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class InvitationResponse(InvitationListResponse):
+    token: str
 
 
 class InvitationAccept(BaseModel):

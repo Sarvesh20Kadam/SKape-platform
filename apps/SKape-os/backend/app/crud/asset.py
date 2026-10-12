@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from sqlalchemy.orm import Session
 
 from app.crud.activity import log_activity
@@ -66,17 +68,26 @@ def create_asset(
     )
 
     db.add(db_asset)
-    db.commit()
-    db.refresh(db_asset)
 
-    log_activity(
-        db=db,
-        action="created",
-        entity="asset",
-        entity_id=db_asset.id,
-        user_id=user_id,
-        organization_id=organization_id,
-    )
+    try:
+        db.flush()
+
+        log_activity(
+            db=db,
+            action="created",
+            entity="asset",
+            entity_id=db_asset.id,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(db_asset)
 
     return db_asset
 
@@ -149,23 +160,30 @@ def update_asset(
     # -------------------------------------------------
 
     for key, value in update_data.items():
-
         if isinstance(value, str):
             value = value.strip()
 
         setattr(asset, key, value)
 
-    db.commit()
-    db.refresh(asset)
+    try:
+        db.flush()
 
-    log_activity(
-        db=db,
-        action="updated",
-        entity="asset",
-        entity_id=asset.id,
-        user_id=user_id,
-        organization_id=organization_id,
-    )
+        log_activity(
+            db=db,
+            action="updated",
+            entity="asset",
+            entity_id=asset.id,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(asset)
 
     return asset
 
@@ -186,17 +204,35 @@ def delete_asset(
         return None
 
     deleted_asset_id = asset.id
-
-    db.delete(asset)
-    db.commit()
-
-    log_activity(
-        db=db,
-        action="deleted",
-        entity="asset",
-        entity_id=deleted_asset_id,
-        user_id=user_id,
-        organization_id=organization_id,
+    snapshot = SimpleNamespace(
+        id=asset.id,
+        name=asset.name,
+        asset_type=asset.asset_type,
+        description=asset.description,
+        location=asset.location,
+        status=asset.status,
+        organization_id=asset.organization_id,
+        assigned_to=asset.assigned_to,
+        is_active=asset.is_active,
+        created_at=asset.created_at,
+        updated_at=asset.updated_at,
     )
 
-    return asset
+    try:
+        log_activity(
+            db=db,
+            action="deleted",
+            entity="asset",
+            entity_id=deleted_asset_id,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+
+        db.delete(asset)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return snapshot

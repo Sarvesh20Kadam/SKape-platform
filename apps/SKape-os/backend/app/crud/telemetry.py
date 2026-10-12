@@ -13,6 +13,18 @@ def create_telemetry(
     device: Device,
     telemetry: TelemetryCreate,
 ):
+    locked = (
+        db.query(Device)
+        .filter(Device.id == device.id)
+        .populate_existing()
+        .with_for_update()
+        .one()
+    )
+
+    if not locked.is_active:
+        db.rollback()
+        raise ValueError("Device is inactive")
+
     now = datetime.now(timezone.utc)
 
     db_telemetry = DeviceTelemetry(
@@ -28,15 +40,14 @@ def create_telemetry(
 
     # A valid telemetry packet proves that the device
     # is communicating with SKape OS.
-    device.status = "online"
-    device.last_seen_at = now
-    device.is_active = True
+    locked.status = "online"
+    locked.last_seen_at = now
 
     db.flush()
 
     evaluate_telemetry_alerts(
         db=db,
-        device=device,
+        device=locked,
         telemetry=db_telemetry,
     )
 

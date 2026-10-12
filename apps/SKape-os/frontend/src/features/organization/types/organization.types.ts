@@ -41,9 +41,12 @@ export type Invitation = {
   role: string;
   status: string;
   organization_id: number;
-  token: string;
   expires_at: string;
   created_at: string;
+};
+
+export type IssuedInvitation = Invitation & {
+  token: string;
 };
 
 export type AcceptInvitationPayload = {

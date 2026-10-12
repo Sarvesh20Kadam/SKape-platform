@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -16,12 +18,19 @@ from app.schemas.user import (
 
 from app.crud.user import (
     create_user,
-    get_user_by_email,
     authenticate_user,
     update_user_role,
 )
 
-from app.security import create_access_token
+from app.security import (
+    create_access_token,
+    validate_password_length,
+    wait_for_login_failure,
+)
+
+REGISTRATION_CONFLICT = (
+    "Registration could not be completed."
+)
 
 
 router = APIRouter()
@@ -35,15 +44,12 @@ def register(
     user: UserCreate,
     db: Session = Depends(get_db),
 ):
-    existing = get_user_by_email(
-        db,
-        user.email,
-    )
-
-    if existing:
+    try:
+        validate_password_length(user.password)
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail="Email already registered",
+            detail=str(exc),
         )
 
     try:
@@ -52,10 +58,10 @@ def register(
             user,
         )
 
-    except ValueError as exc:
+    except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=str(exc),
+            detail=REGISTRATION_CONFLICT,
         )
 
 
@@ -67,6 +73,7 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    started = time.monotonic()
     authenticated_user = authenticate_user(
         db,
         form_data.username,
@@ -74,9 +81,33 @@ def login(
     )
 
     if authenticated_user is None:
+        wait_for_login_failure(started)
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password",
+        )
+
+    if not authenticated_user.is_active:
+        wait_for_login_failure(started)
+        raise HTTPException(
+            status_code=403,
+            detail="User account is inactive",
+        )
+
+    organization = authenticated_user.organization
+
+    if organization is None:
+        wait_for_login_failure(started)
+        raise HTTPException(
+            status_code=403,
+            detail="Organization not found",
+        )
+
+    if not organization.is_active:
+        wait_for_login_failure(started)
+        raise HTTPException(
+            status_code=403,
+            detail="Organization is inactive",
         )
 
     token = create_access_token(
@@ -144,6 +175,18 @@ def update_role(
         )
 
     if (
+        request.role == "admin"
+        and current_user.role != "owner"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You don't have permission to "
+                "perform this action."
+            ),
+        )
+
+    if (
         current_user.role == "admin"
         and user.role == "admin"
     ):
@@ -154,10 +197,11 @@ def update_role(
 
     try:
         return update_user_role(
-            db,
-            user,
-            request.role,
-        )
+            db=db,
+            user=user,
+            role=request.role,
+            actor_user_id=current_user.id,
+)
 
     except ValueError as exc:
         raise HTTPException(
