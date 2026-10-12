@@ -189,14 +189,19 @@ the disposable staging database.
 
 They do not provision production PostgreSQL, rotate production
 secrets, measure backup retention, PITR, RPO, or RTO, or authorize a
-production deployment. No staging verification is recorded in this
-document.
+production deployment. Completing the staging acceptance checklist
+does not show that production backup, PITR, RPO, RTO, production
+migration, production release, or live R2 testing is ready. Those
+operations remain unauthorized. No staging verification is recorded
+in this document.
 
 ## Staging acceptance checklist
 
-Each item stays `not recorded` until its own evidence exists. A
-repository test does not check an item that requires the disposable
-staging database or a chosen host.
+The checklist has eleven rows. Each item stays `not recorded` until
+its own evidence exists. A repository test does not check an item
+that requires the disposable staging database or a chosen host.
+Record only safe identifiers and yes/no confirmations. Do not record
+connection strings, secret values, tokens, or environment values.
 
 | Check | Required evidence | Status |
 |---|---|---|
@@ -205,8 +210,9 @@ staging database or a chosen host.
 | Disposable staging PostgreSQL migration | `alembic upgrade head` from `apps/SKape-os/backend` against the empty staging database, as its own step, before the API starts. | not recorded |
 | Readiness endpoint | `GET /api/v1/health/ready` returns ready after that migration on PostgreSQL 16. `GET /api/v1/health/` is not sufficient. Another major version stays unavailable. | not recorded |
 | HTTPS, CORS, and disabled API docs | `SKAPE_CORS_ORIGINS` is the staging frontend HTTPS origin with no path or wildcard. `/docs`, `/redoc`, and `/openapi.json` are absent. | not recorded |
-| Authentication and organization isolation | A staging login and a cross-organization request behave as the existing tenant tests require. | not recorded |
-| Frontend deep-link routing | Refreshing a client route serves the built `index.html`. | not recorded |
+| Staging resource and secret separation | The staging database is disposable and is not the production database. The staging signing secret differs from the production signing secret, and neither value is recorded. Staging does not contain production database credentials. The API process has no R2, object-storage, or backup credentials or environment variables. Record a database host name, a database name, and yes/no answers only. | not recorded |
+| Authentication and organization isolation | On the staging API, repeat these cases from the repository tests. Unauthenticated `POST /api/v1/comments/`, `GET /api/v1/comments/1`, `PUT /api/v1/comments/1`, and `DELETE /api/v1/comments/1` return 401, as in `test_comments_require_authentication` in `apps/SKape-os/backend/tests/test_comments.py`. The authenticated organization owner created by `POST /api/v1/users/` can `POST /api/v1/projects/` and `POST /api/v1/tasks/` for a project in that organization, both returning 200, as in `test_project_task_comment_and_activity_workflow` in `apps/SKape-os/backend/tests/test_workflows.py`. That test checks cross-organization task access and expects 404 from `GET /api/v1/tasks/{id}`. `test_asset_assignment_stays_inside_the_organization` in the same file checks cross-organization asset access and expects 404 from `GET /api/v1/assets/{id}`. That workflow test and `test_api_crud_validation_and_tenant_boundaries` in `apps/SKape-os/backend/tests/test_comments.py` expect `GET /api/v1/comments/{task_id}` for the other organization to return 200 with an empty list. | not recorded |
+| Frontend deep-link routing | Direct navigation to `/login` and `/dashboard`, and a refresh of each URL, returns the built `index.html`. Those paths are client routes in `apps/SKape-os/frontend/src/routes/AppRouter.tsx`. | not recorded |
 | Device-monitor process count and shutdown | One API process is running. Stopping it stops the monitor. | not recorded |
 | Rollback on the empty staging database | The empty-database procedure in this note is exercised on staging only. | not recorded |
-| Evidence and production gates | Staging results are stored separately from production release evidence. Production migration, production release, and live R2 testing stay unauthorized. | not recorded |
+| Evidence and production gates | Staging results are stored separately from production release evidence. Production migration, production release, backup, PITR, RPO, RTO measurement, and live R2 testing stay unauthorized. Passing the staging rows does not show production recovery readiness. | not recorded |
